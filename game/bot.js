@@ -52,7 +52,7 @@ class Bot {
     for (const q of g.players.values()) {
       if (!q.alive || !g.isEnemy(p, q) || !g.isVisibleTo(p.team, q)) continue;
       const d = Math.hypot(q.x - p.x, q.y - p.y);
-      if (d > this.d.aggro) continue;
+      if (d > (g.mode === 'survival' ? Math.min(this.d.aggro, 480) : this.d.aggro)) continue;
       const lob = p.def.attack.type === 'lob';
       const score = d * (lob || g.map.los(p.x, p.y, q.x, q.y) ? 1 : 1.6) * (q.hp / q.maxHp < 0.4 ? 0.7 : 1);
       if (score < bestScore) { bestScore = score; best = q; }
@@ -64,6 +64,12 @@ class Bot {
 
     const t = this.target;
     const dist = t ? Math.hypot(t.x - p.x, t.y - p.y) : Infinity;
+    // Supervivencia: huir de la niebla tóxica hacia el centro.
+    if (g.mode === 'survival' && g.zone > 0 && !g.inZone(p.x, p.y, 90)) {
+      this.state = 'gas';
+      this.goal = { x: g.map.width / 2 + (Math.random() - 0.5) * 100, y: g.map.height / 2 + (Math.random() - 0.5) * 100 };
+      return;
+    }
     const lowHp = p.hp < p.maxHp * 0.35;
     const home = this.homePoint(t);
 
@@ -88,7 +94,16 @@ class Bot {
 
     // Sin enemigos a la vista: ir a buscar pelea.
     this.state = 'roam';
-    if (g.mode === 'gems') {
+    if (g.mode === 'survival') {
+      // Explorar con calma por zonas seguras en vez de perseguir a todos.
+      if (!this.wander || now > this.wanderUntil || Math.hypot(this.wander.x - p.x, this.wander.y - p.y) < 40 || !g.inZone(this.wander.x, this.wander.y, 80)) {
+        const z = g.zone + 120;
+        const spot = g.map.freeSpotNear(p.x, p.y, 120, 380);
+        this.wander = { x: Math.max(z, Math.min(g.map.width - z, spot.x)), y: Math.max(z, Math.min(g.map.height - z, spot.y)) };
+        this.wanderUntil = now + 3 + Math.random() * 4;
+      }
+      this.goal = this.wander;
+    } else if (g.mode === 'gems') {
       this.goal = { x: g.map.width / 2 + (p.team === 0 ? -150 : 150), y: g.map.height / 2 };
     } else {
       let near = null, nd = Infinity;
@@ -136,6 +151,14 @@ class Bot {
     return { x: (x - p.x) / d, y: (y - p.y) / d };
   }
 
+  allyNeedsHeal() {
+    const g = this.g, p = this.p;
+    for (const q of g.players.values()) {
+      if (q !== p && q.alive && q.team === p.team && q.hp < q.maxHp * 0.6 && Math.hypot(q.x - p.x, q.y - p.y) < 150) return true;
+    }
+    return false;
+  }
+
   act() {
     const g = this.g, p = this.p, now = g.time, inp = p.input;
     const t = this.target && this.target.alive && g.players.has(this.target.id) ? this.target : null;
@@ -151,7 +174,8 @@ class Bot {
       const dist = Math.hypot(dx, dy) || 1;
       const lob = p.def.attack.type === 'lob';
       const los = lob || g.map.los(p.x, p.y, t.x, t.y);
-      const desired = p.brawler === 'brutus' ? 70 : this.range() * 0.7;
+      let desired = p.brawler === 'brutus' ? 70 : this.range() * 0.7;
+      if (g.mode === 'survival' && g.zone > 0 && !g.inZone(t.x, t.y, 60)) desired = this.range() * 0.9;
       const perp = { x: (-dy / dist) * this.strafe, y: (dx / dist) * this.strafe };
       if (!los) move = this.dirTo(t.x, t.y);
       else if (dist > desired + 60) {
@@ -187,7 +211,7 @@ class Bot {
       const a = p.def.attack;
       const lob = a.type === 'lob';
       const los = lob || g.map.los(p.x, p.y, t.x, t.y);
-      const travel = lob ? a.flight : dist / a.speed;
+      const travel = lob ? a.flight : dist / (a.speed || 1000);
       const ax = t.x + t.vx * travel * this.d.lead;
       const ay = t.y + t.vy * travel * this.d.lead;
       inp.aim = Math.atan2(ay - p.y, ax - p.x) + gauss() * this.d.err;
@@ -201,11 +225,14 @@ class Bot {
         else if (s.type === 'ring') use = dist < 260;
         else if (s.type === 'pierce') use = los && dist < 900;
         else if (s.type === 'cloud') use = dist < s.range;
+        else if (s.type === 'shield') use = dist < a.range && p.hp < p.maxHp * 0.8;
+        else if (s.type === 'heal') use = p.hp < p.maxHp * 0.6 || this.allyNeedsHeal();
         if (use) inp.ss++;
       }
     } else if (Math.hypot(move.x, move.y) > 0.1) {
       inp.aim = Math.atan2(move.y, move.x);
     }
+    if (!t && p.def.super.type === 'heal' && p.superCharge >= 1 && (p.hp < p.maxHp * 0.5 || this.allyNeedsHeal())) inp.ss++;
   }
 }
 

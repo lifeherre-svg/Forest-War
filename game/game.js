@@ -1,4 +1,4 @@
-const { BRAWLERS, MODES, MAPS } = require('./constants');
+const { BRAWLERS, MODES, MAPS, LEVELS } = require('./constants');
 const { GameMap } = require('./map');
 const { Bot } = require('./bot');
 
@@ -35,14 +35,20 @@ class Game {
     this.over = false;
     this.onEnd = onEnd;
     this.snapCache = new Map();
+    this.zone = 0;
+    this.nextGasTick = 0;
+    this.elim = [];
 
     let ffaIdx = 0;
     for (const m of members) {
       const def = BRAWLERS[m.brawler] || BRAWLERS.pinon;
+      const level = Math.max(1, Math.min(LEVELS.max, m.level || 1));
+      const mult = LEVELS.mult(level);
       const p = {
-        id: m.id, name: m.name, brawler: m.brawler, def, isBot: !!m.isBot,
+        id: m.id, name: m.name, brawler: m.brawler, def, isBot: !!m.isBot, pid: m.pid || null,
+        skin: def.skins[m.skin] ? m.skin : 'default', level, mult, burst: null, shieldUntil: 0,
         team: this.modeDef.team ? m.team : 100 + ffaIdx++,
-        x: 0, y: 0, vx: 0, vy: 0, r: def.radius, hp: def.hp, maxHp: def.hp,
+        x: 0, y: 0, vx: 0, vy: 0, r: def.radius, hp: Math.round(def.hp * mult), maxHp: Math.round(def.hp * mult),
         ammo: 3, nextShot: 0, superCharge: 0, alive: true, respawnAt: 0,
         lastHurt: -99, lastAttack: -99, revealUntil: 0, fireQueuedUntil: 0,
         kills: 0, deaths: 0, gems: 0, damage: 0, aim: 0, dash: null, knock: null,
@@ -59,8 +65,8 @@ class Game {
   startInfo() {
     return {
       mode: this.mode,
-      map: { rows: this.map.rows, name: this.map.name },
-      players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, brawler: p.brawler, team: p.team, isBot: p.isBot })),
+      map: { rows: this.map.rows, name: this.map.name, id: this.mapId },
+      players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, brawler: p.brawler, skin: p.skin, level: p.level, maxHp: p.maxHp, team: p.team, isBot: p.isBot })),
     };
   }
 
@@ -108,6 +114,7 @@ class Game {
     const p = this.players.get(id);
     if (!p) return;
     this.dropGems(p);
+    if (this.mode === 'survival' && p.alive) this.elim.push(p.id);
     this.players.delete(id);
   }
 
@@ -123,7 +130,7 @@ class Game {
 
     for (const p of this.players.values()) {
       if (!p.alive) {
-        if (now >= p.respawnAt) this.respawn(p);
+        if (this.modeDef.respawn !== null && now >= p.respawnAt) this.respawn(p);
         continue;
       }
       if (p.bot && active) p.bot.update(DT);
@@ -134,6 +141,7 @@ class Game {
       this.updateLobs(DT);
       this.updateClouds();
       if (this.mode === 'gems') this.updateGems();
+      if (this.mode === 'survival') this.updateGas();
     }
     this.checkEnd();
   }
@@ -164,7 +172,8 @@ class Game {
       let mx = inp.mx, my = inp.my;
       const len = Math.hypot(mx, my);
       if (len > 1) { mx /= len; my /= len; }
-      this.moveCircle(p, mx * p.def.speed * dt, my * p.def.speed * dt);
+      const spd = p.def.speed * (now < p.shieldUntil ? p.def.super.speedMult : 1);
+      this.moveCircle(p, mx * spd * dt, my * spd * dt);
     }
     if (p.knock) {
       this.moveCircle(p, p.knock.vx * dt, p.knock.vy * dt);
@@ -182,8 +191,15 @@ class Game {
       p.lastFs = inp.fs;
       p.fireQueuedUntil = now + 0.3;
     }
+    if (p.burst && now >= p.burst.nextAt) {
+      const a = p.def.attack;
+      this.fireBullet(p, p.burst.ang, a, p.brawler);
+      p.burst.left--;
+      p.burst.nextAt = now + a.interval;
+      if (p.burst.left <= 0) p.burst = null;
+    }
     const wantFire = inp.fire || now < p.fireQueuedUntil;
-    if (wantFire && p.ammo >= 1 && now >= p.nextShot && !p.dash) {
+    if (wantFire && p.ammo >= 1 && now >= p.nextShot && !p.dash && !p.burst) {
       p.fireQueuedUntil = 0;
       this.attack(p);
     }
@@ -193,7 +209,7 @@ class Game {
     this.bullets.push({
       id: nextId++, x: p.x, y: p.y,
       vx: Math.cos(ang) * spec.speed, vy: Math.sin(ang) * spec.speed,
-      owner: p.id, team: p.team, dmg: spec.dmg, range: spec.range, traveled: 0,
+      owner: p.id, team: p.team, dmg: spec.dmg * p.mult, range: spec.range, traveled: 0,
       r: spec.bulletR, pierce: !!opts.pierce, charge: !opts.isSuper, hit: new Set(), kind,
     });
   }
@@ -206,13 +222,16 @@ class Game {
     p.lastAttack = now;
     p.revealUntil = now + 1.2;
     const ang = p.input.aim;
+    this.events.push({ k: 'atk', id: p.id, x: r1(p.x), y: r1(p.y), a: r2(ang) });
     if (a.type === 'spread') {
       for (let i = 0; i < a.count; i++) {
         const off = a.count > 1 ? -a.spread / 2 + (a.spread * i) / (a.count - 1) : 0;
         this.fireBullet(p, ang + off, a, p.brawler);
       }
     } else if (a.type === 'single') {
-      this.fireBullet(p, ang, a, p.brawler);
+      this.fireBullet(p, ang, a, p.brawler, { pierce: a.pierce });
+    } else if (a.type === 'burst') {
+      p.burst = { ang, left: a.count, nextAt: now };
     } else if (a.type === 'lob') {
       this.launchLob(p, ang, a.range, a.flight, 'spore');
     }
@@ -224,7 +243,7 @@ class Game {
       id: nextId++, x0: p.x, y0: p.y,
       x1: Math.max(0, Math.min(this.map.width, p.x + Math.cos(ang) * dist)),
       y1: Math.max(0, Math.min(this.map.height, p.y + Math.sin(ang) * dist)),
-      t: 0, dur: flight, owner: p.id, team: p.team, kind,
+      t: 0, dur: flight, owner: p.id, team: p.team, kind, mult: p.mult,
     });
   }
 
@@ -244,6 +263,10 @@ class Game {
       p.dash = { dx: Math.cos(ang), dy: Math.sin(ang), left: s.dist, hit: new Set() };
     } else if (s.type === 'cloud') {
       this.launchLob(p, ang, s.range, s.flight, 'cloud');
+    } else if (s.type === 'heal') {
+      this.clouds.push({ id: nextId++, x: p.x, y: p.y, r: s.radius, dps: s.hps * p.mult, endAt: now + s.duration, nextTick: now, owner: p.id, team: p.team, heal: true });
+    } else if (s.type === 'shield') {
+      p.shieldUntil = now + s.duration;
     }
   }
 
@@ -261,7 +284,7 @@ class Game {
         p.dash.hit.add(e.id);
         const nx = (e.x - p.x) / (d || 1), ny = (e.y - p.y) / (d || 1);
         e.knock = { vx: (nx * s.knock) / 0.2, vy: (ny * s.knock) / 0.2, t: 0.2 };
-        this.damage(p, e, s.dmg, false);
+        this.damage(p, e, s.dmg * p.mult, false);
       }
     }
     if (p.dash.left <= 0 || moved < step * 0.4) p.dash = null;
@@ -304,11 +327,11 @@ class Game {
         this.events.push({ k: 'boom', x: r1(l.x1), y: r1(l.y1), r: a.radius });
         for (const e of this.players.values()) {
           if (!e.alive || e.team === l.team) continue;
-          if (Math.hypot(e.x - l.x1, e.y - l.y1) < a.radius + e.r * 0.5) this.damage(owner, e, a.dmg, true);
+          if (Math.hypot(e.x - l.x1, e.y - l.y1) < a.radius + e.r * 0.5) this.damage(owner, e, a.dmg * l.mult, true);
         }
       } else {
         const s = BRAWLERS.champi.super;
-        this.clouds.push({ id: nextId++, x: l.x1, y: l.y1, r: s.radius, dps: s.dps, endAt: this.time + s.duration, nextTick: this.time, owner: l.owner, team: l.team });
+        this.clouds.push({ id: nextId++, x: l.x1, y: l.y1, r: s.radius, dps: s.dps * l.mult, endAt: this.time + s.duration, nextTick: this.time, owner: l.owner, team: l.team });
       }
     }
     this.lobs = keep;
@@ -322,10 +345,36 @@ class Game {
       c.nextTick += 0.5;
       const owner = this.players.get(c.owner);
       for (const e of this.players.values()) {
-        if (!e.alive || e.team === c.team) continue;
-        if (Math.hypot(e.x - c.x, e.y - c.y) < c.r) this.damage(owner, e, c.dps * 0.5, false);
+        if (!e.alive || Math.hypot(e.x - c.x, e.y - c.y) >= c.r) continue;
+        if (c.heal) {
+          if (e.team !== c.team || e.hp >= e.maxHp) continue;
+          const h = Math.min(e.maxHp - e.hp, Math.round(c.dps * 0.5));
+          e.hp += h;
+          this.events.push({ k: 'heal', x: r1(e.x), y: r1(e.y), d: h, id: e.id });
+        } else if (e.team !== c.team) {
+          this.damage(owner, e, c.dps * 0.5, false);
+        }
       }
     }
+  }
+
+  // Niebla tóxica de Supervivencia: se cierra desde los bordes.
+  updateGas() {
+    const now = this.time;
+    const t = now - this.startAt - 15;
+    const maxInset = Math.min(this.map.width, this.map.height) / 2 - 130;
+    this.zone = t > 0 ? Math.min(maxInset, (t * maxInset) / 120) : 0;
+    if (now < this.nextGasTick) return;
+    this.nextGasTick = now + 0.5;
+    if (this.zone <= 0) return;
+    for (const p of this.players.values()) {
+      if (p.alive && !this.inZone(p.x, p.y)) this.damage(null, p, 500, false);
+    }
+  }
+
+  inZone(x, y, margin = 0) {
+    const z = this.zone + margin;
+    return x > z && y > z && x < this.map.width - z && y < this.map.height - z;
   }
 
   teamGems() {
@@ -366,6 +415,7 @@ class Game {
 
   damage(attacker, target, dmg, charge) {
     if (!target.alive) return;
+    if (this.time < target.shieldUntil) dmg *= 1 - target.def.super.reduction;
     dmg = Math.round(dmg);
     target.hp -= dmg;
     target.lastHurt = this.time;
@@ -384,6 +434,8 @@ class Game {
     target.respawnAt = this.time + this.modeDef.respawn;
     target.dash = null;
     target.knock = null;
+    target.burst = null;
+    if (this.mode === 'survival') this.elim.push(target.id);
     if (killer && killer !== target) {
       killer.kills++;
       if (this.mode === 'tdm' && (killer.team === 0 || killer.team === 1)) this.score[killer.team]++;
@@ -412,9 +464,15 @@ class Game {
       for (const p of this.players.values()) if (p.kills >= target) winner = p.id;
     } else if (this.mode === 'gems') {
       if (this.countdown && now >= this.countdown.endAt) winner = this.countdown.team;
+    } else if (this.mode === 'survival') {
+      const alive = [...this.players.values()].filter((p) => p.alive);
+      if (alive.length <= 1 && now > this.startAt) winner = alive.length ? alive[0].id : null;
     }
     if (winner === undefined && now >= this.endAt) {
-      if (this.mode === 'ffa') {
+      if (this.mode === 'survival') {
+        const alive = [...this.players.values()].filter((p) => p.alive).sort((a, b) => b.hp - a.hp);
+        winner = alive.length ? alive[0].id : null;
+      } else if (this.mode === 'ffa') {
         const sorted = [...this.players.values()].sort((a, b) => b.kills - a.kills);
         winner = sorted.length && (sorted.length < 2 || sorted[0].kills > sorted[1].kills) ? sorted[0].id : null;
       } else {
@@ -425,14 +483,34 @@ class Game {
     if (winner !== undefined) this.finish(winner);
   }
 
+  // Puesto de cada jugador en los modos individuales.
+  ranks() {
+    const list = [...this.players.values()];
+    const place = new Map();
+    if (this.mode === 'survival') {
+      const alive = list.filter((p) => p.alive).sort((a, b) => b.hp - a.hp);
+      const order = [...alive.map((p) => p.id), ...this.elim.slice().reverse().filter((id) => this.players.has(id))];
+      order.forEach((id, i) => place.set(id, i + 1));
+    } else {
+      const sorted = list.slice().sort((a, b) => b.kills - a.kills);
+      sorted.forEach((p) => place.set(p.id, 1 + sorted.filter((q) => q.kills > p.kills).length));
+    }
+    return place;
+  }
+
   finish(winner) {
     this.over = true;
+    const place = this.modeDef.team ? null : this.ranks();
     const results = {
       mode: this.mode,
       winner,
+      total: this.players.size,
       players: [...this.players.values()]
-        .map((p) => ({ id: p.id, name: p.name, brawler: p.brawler, team: p.team, isBot: p.isBot, kills: p.kills, deaths: p.deaths, damage: p.damage }))
-        .sort((a, b) => b.kills - a.kills || b.damage - a.damage),
+        .map((p) => ({
+          id: p.id, pid: p.pid, name: p.name, brawler: p.brawler, skin: p.skin, team: p.team, isBot: p.isBot,
+          kills: p.kills, deaths: p.deaths, damage: p.damage, place: place ? place.get(p.id) : null,
+        }))
+        .sort((a, b) => (place ? a.place - b.place : 0) || b.kills - a.kills || b.damage - a.damage),
     };
     if (this.onEnd) this.onEnd(results);
   }
@@ -456,7 +534,8 @@ class Game {
     for (const q of this.players.values()) {
       kills.push([q.id, q.kills, q.gems]);
       if (!q.alive || !this.isVisibleTo(team, q)) continue;
-      const flags = (this.map.inBush(q.x, q.y) ? 1 : 0) | (q.superCharge >= 1 ? 2 : 0) | (q.dash ? 4 : 0);
+      const flags = (this.map.inBush(q.x, q.y) ? 1 : 0) | (q.superCharge >= 1 ? 2 : 0) | (q.dash ? 4 : 0)
+        | (now < q.shieldUntil ? 8 : 0) | (Math.abs(q.vx) + Math.abs(q.vy) > 20 ? 16 : 0);
       players.push([q.id, r1(q.x), r1(q.y), r1(q.hp), r2(q.aim), flags, q.gems]);
     }
     const snap = {
@@ -464,7 +543,7 @@ class Game {
       k: kills,
       b: this.bullets.map((b) => [b.id, r1(b.x), r1(b.y), b.kind]),
       l: this.lobs.map((l) => [l.id, r1(l.x0), r1(l.y0), r1(l.x1), r1(l.y1), r2(l.t / l.dur), l.kind]),
-      c: this.clouds.map((c) => [c.id, r1(c.x), r1(c.y), c.r]),
+      c: this.clouds.map((c) => [c.id, r1(c.x), r1(c.y), c.r, c.heal ? 1 : 0]),
       g: this.gems.map((g) => [g.id, r1(g.x), r1(g.y)]),
       s: {
         sc: this.score,
@@ -472,6 +551,8 @@ class Game {
         cd: this.countdown ? { team: this.countdown.team, left: r2(Math.max(0, this.countdown.endAt - now)) } : null,
         tl: r2(Math.max(0, this.endAt - now)),
         si: r2(Math.max(0, this.startAt - now)),
+        z: r1(this.zone),
+        al: [...this.players.values()].filter((p) => p.alive).length,
       },
       ev: this.events,
     };
@@ -486,8 +567,8 @@ class Game {
     return {
       ...shared,
       me: {
-        alive: me.alive, ammo: r2(me.ammo), sup: r2(me.superCharge),
-        rs: me.alive ? 0 : r2(Math.max(0, me.respawnAt - this.time)),
+        alive: me.alive, ammo: r2(me.ammo), sup: r2(me.superCharge), hp: r1(me.hp),
+        rs: me.alive ? 0 : this.modeDef.respawn === null ? -1 : r2(Math.max(0, me.respawnAt - this.time)),
         x: r1(me.x), y: r1(me.y),
       },
     };

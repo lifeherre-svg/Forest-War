@@ -2,101 +2,200 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#1c3a24">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1d3fa8">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Forest War</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <!-- MENÚ -->
-  <section id="menu" class="screen">
-    <div class="card menu-card">
-      <h1 class="logo">Forest War</h1>
-      <p class="tagline">Batallas en el bosque con tus amigos</p>
-      <label class="field">
-        <span>Tu nombre</span>
-        <input id="nameInput" maxlength="14" placeholder="Jugador" autocomplete="off">
-      </label>
-      <button id="createBtn" class="btn btn-yellow big">Crear sala privada</button>
-      <div class="divider"><span>o únete a la de un amigo</span></div>
-      <div class="join-row">
-        <input id="codeInput" maxlength="5" placeholder="CÓDIGO" autocomplete="off">
-        <button id="joinBtn" class="btn btn-blue">Unirse</button>
+  <!-- CARGANDO -->
+  <section id="loading" class="screen bg-blue center">
+    <h1 class="logo">Forest War</h1>
+    <p class="loading-txt">Cargando el bosque…</p>
+  </section>
+
+  <!-- INICIO -->
+  <section id="home" class="screen bg-blue hidden">
+    <div class="topbar">
+      <button class="profile-chip" id="profileBtn" title="Cambiar nombre">
+        <img class="avatar" id="avatarImg" alt="">
+        <div class="pc-text">
+          <div class="pc-name" id="pName">Jugador</div>
+          <div class="pc-trophies"><span class="ic-trophy"></span><b id="pTrophies">0</b></div>
+        </div>
+      </button>
+      <div class="money">
+        <div class="cur"><span class="ic-coin"></span><b class="js-coins">0</b></div>
+        <div class="cur"><span class="ic-em"></span><b class="js-em">0</b></div>
+        <button class="round-btn js-mute" title="Sonido">🔊</button>
       </div>
-      <p id="menuMsg" class="msg"></p>
-      <details class="help">
-        <summary>Controles</summary>
-        <p><b>PC:</b> WASD o flechas para moverte · ratón para apuntar · clic izquierdo para disparar · <b>E</b>, espacio o clic derecho para el súper.</p>
-        <p><b>Móvil:</b> joystick izquierdo para moverte · arrastra el joystick derecho y suelta para disparar (un toque apunta solo) · botón amarillo para el súper.</p>
-      </details>
+    </div>
+
+    <nav class="home-left">
+      <button class="menu-btn" data-go="shop"><span class="mi">🛒</span><span>Tienda</span><span class="dot hidden" id="shopDot"></span></button>
+      <button class="menu-btn" data-go="brawlers"><span class="mi">🐾</span><span>Luchadores</span></button>
+      <button class="menu-btn" data-go="friends"><span class="mi">👥</span><span>Amigos</span></button>
+    </nav>
+
+    <div class="home-center">
+      <canvas id="showcase"></canvas>
+      <button class="sel-info" data-go="brawlers">
+        <div class="sel-name" id="selName">Piñón</div>
+        <div class="sel-sub"><span class="ic-trophy sm"></span><b id="selTrophies">0</b> · <span id="selLevel">Nivel 1</span></div>
+      </button>
+    </div>
+
+    <button class="pass-card" data-go="pass">
+      <div class="pass-top"><span class="pass-title">PASE DEL BOSQUE</span><span class="pass-tier" id="passTier">1</span></div>
+      <div class="xpbar"><i id="passXp"></i><span id="passXpTxt"></span></div>
+      <div class="pass-trial" id="passTrial"></div>
+      <span class="dot hidden" id="passDot"></span>
+    </button>
+
+    <div class="home-bottom">
+      <button class="mode-btn" id="modeBtn">
+        <span class="mode-ic" id="modeIc">💎</span>
+        <span class="mode-txt"><span class="mode-lbl">MODO</span><span class="mode-name" id="modeName">Cristales</span></span>
+      </button>
+      <button class="play-btn" id="playBtn">¡JUGAR!</button>
     </div>
   </section>
 
-  <!-- SALA -->
-  <section id="lobby" class="screen hidden">
-    <div class="lobby-wrap">
-      <header class="lobby-head card">
-        <div>
-          <div class="label">Código de sala</div>
-          <div id="roomCode" class="room-code">-----</div>
-        </div>
-        <div class="head-btns">
-          <button id="copyLinkBtn" class="btn btn-blue">Copiar enlace</button>
-          <button id="leaveBtn" class="btn btn-red">Salir</button>
-        </div>
-      </header>
+  <!-- LUCHADORES -->
+  <section id="brawlers" class="screen bg-blue hidden">
+    <div class="subbar">
+      <button class="back-btn" data-go="home">◀</button>
+      <h2>Luchadores</h2>
+      <div class="money">
+        <div class="cur"><span class="ic-coin"></span><b class="js-coins">0</b></div>
+        <div class="cur"><span class="ic-em"></span><b class="js-em">0</b></div>
+      </div>
+    </div>
+    <div class="brawlers-layout">
+      <div class="b-grid" id="bGrid"></div>
+      <div class="b-detail card" id="bDetail"></div>
+    </div>
+  </section>
 
+  <!-- TIENDA -->
+  <section id="shop" class="screen bg-blue hidden">
+    <div class="subbar">
+      <button class="back-btn" data-go="home">◀</button>
+      <h2>Tienda</h2>
+      <div class="money">
+        <div class="cur"><span class="ic-coin"></span><b class="js-coins">0</b></div>
+        <div class="cur"><span class="ic-em"></span><b class="js-em">0</b></div>
+      </div>
+    </div>
+    <div class="shop-wrap" id="shopBody"></div>
+  </section>
+
+  <!-- PASE -->
+  <section id="pass" class="screen bg-pass hidden">
+    <div class="subbar">
+      <button class="back-btn" data-go="home">◀</button>
+      <h2>Pase del Bosque</h2>
+      <div class="money">
+        <div class="cur"><span class="ic-coin"></span><b class="js-coins">0</b></div>
+        <div class="cur"><span class="ic-em"></span><b class="js-em">0</b></div>
+      </div>
+    </div>
+    <div class="pass-wrap">
+      <div class="pass-head card" id="passHead"></div>
+      <div class="track-wrap">
+        <div class="track-labels"><div class="tl prem">PREMIUM</div><div class="tl"></div><div class="tl free">GRATIS</div></div>
+        <div class="track" id="passTrack"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AMIGOS -->
+  <section id="friends" class="screen bg-blue hidden">
+    <div class="subbar">
+      <button class="back-btn" data-go="home">◀</button>
+      <h2>Jugar con amigos</h2>
+      <div></div>
+    </div>
+    <div class="friends-wrap">
+      <div class="card fr-card">
+        <h3>Crear sala privada</h3>
+        <p class="muted">Invita a tus amigos con un código y rellena los huecos con bots. Las salas privadas dan XP del pase y monedas, pero no trofeos.</p>
+        <button class="btn btn-yellow big" id="createBtn">Crear sala</button>
+      </div>
+      <div class="card fr-card">
+        <h3>Unirse a una sala</h3>
+        <p class="muted">Escribe el código de 5 letras que te pase tu amigo.</p>
+        <div class="join-row">
+          <input id="codeInput" maxlength="5" placeholder="CÓDIGO" autocomplete="off">
+          <button class="btn btn-blue big" id="joinBtn">Unirse</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SALA PRIVADA -->
+  <section id="room" class="screen bg-blue hidden">
+    <div class="subbar">
+      <button class="back-btn" id="leaveRoomBtn">◀</button>
+      <h2>Sala <span id="roomCode" class="code">-----</span></h2>
+      <button class="btn btn-blue" id="copyLinkBtn">Copiar enlace</button>
+    </div>
+    <div class="room-wrap">
       <div class="card settings">
-        <div class="setting">
-          <div class="label">Modo</div>
-          <div id="modeBtns" class="seg"></div>
-          <p id="modeDesc" class="small"></p>
-        </div>
-        <div class="setting">
-          <div class="label">Mapa</div>
-          <div id="mapBtns" class="seg"></div>
-        </div>
-        <div class="setting" id="botSetting">
-          <div class="label">Dificultad de los bots nuevos</div>
-          <div id="diffBtns" class="seg"></div>
-        </div>
+        <div class="setting"><div class="label">Modo</div><div id="modeSeg" class="seg"></div><p id="roomModeDesc" class="muted small"></p></div>
+        <div class="setting"><div class="label">Mapa</div><div id="mapSeg" class="seg"></div></div>
+        <div class="setting" id="diffSetting"><div class="label">Dificultad de bots nuevos</div><div id="diffSeg" class="seg"></div></div>
       </div>
-
       <div id="teams" class="teams"></div>
-
       <div class="card">
-        <div class="label">Elige tu luchador</div>
-        <div id="brawlerPicker" class="brawlers"></div>
+        <div class="label">Tu luchador</div>
+        <div class="mini-pick" id="roomPick"></div>
       </div>
-
       <div class="start-bar">
-        <p id="lobbyMsg" class="msg"></p>
-        <button id="startBtn" class="btn btn-yellow big">¡Empezar partida!</button>
-        <p id="waitHost" class="small">Esperando a que el anfitrión empiece la partida…</p>
+        <button class="play-btn" id="startBtn">¡EMPEZAR!</button>
+        <p id="waitHost" class="wait">Esperando a que el anfitrión empiece…</p>
       </div>
     </div>
   </section>
 
-  <!-- JUEGO -->
+  <!-- BUSCANDO PARTIDA -->
+  <section id="queue" class="screen bg-blue hidden center">
+    <div class="queue-box">
+      <div class="q-mode" id="qMode">Cristales</div>
+      <div class="q-title">Buscando jugadores<span class="dots"><i>.</i><i>.</i><i>.</i></span></div>
+      <div class="q-count" id="qCount">1/6</div>
+      <div class="q-sub" id="qSub">Si no hay más jugadores, completaremos con bots.</div>
+      <button class="btn btn-red big" id="cancelQueueBtn">Cancelar</button>
+    </div>
+  </section>
+
+  <!-- PARTIDA -->
   <section id="game" class="screen hidden">
     <canvas id="cv"></canvas>
     <button id="quitBtn" class="btn btn-ghost quit">Salir</button>
     <div id="rotateHint" class="hidden">Gira el móvil para jugar en horizontal 📱↻</div>
     <div id="results" class="overlay hidden">
-      <div class="card results-card">
-        <h2 id="resultTitle">¡Victoria!</h2>
-        <p id="resultSub" class="small"></p>
-        <table id="resultTable"></table>
-        <button id="backLobbyBtn" class="btn btn-yellow big">Volver a la sala</button>
+      <div class="results-card">
+        <h2 id="resultTitle">¡VICTORIA!</h2>
+        <p id="resultSub"></p>
+        <div class="reward-row" id="resultRewards"></div>
+        <div class="result-players" id="resultPlayers"></div>
+        <button class="play-btn" id="continueBtn">CONTINUAR</button>
       </div>
     </div>
   </section>
 
+  <div id="modal" class="overlay hidden"><div class="card modal-card" id="modalBody"></div></div>
   <div id="toast" class="toast hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="client.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
 </body>
 </html>
