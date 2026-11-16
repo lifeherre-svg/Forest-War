@@ -27,8 +27,17 @@ npm start          # http://localhost:3000
 - **Registro obligatorio:** la primera vez se elige un **nombre de usuario** (único, de 3 a 14 letras, números o `_`) y una contraseña (mínimo 6 caracteres). Con esa cuenta se entra desde cualquier móvil y el progreso se guarda en el servidor.
 - Las contraseñas se guardan cifradas con *scrypt*; tras 5 intentos fallidos se bloquea el inicio de sesión de esa cuenta 30 s.
 - Quien ya jugaba antes de existir las cuentas conserva todo su progreso: se le pide crear la cuenta y se le asigna su perfil.
+- **Recuperar la contraseña:** al registrarte se muestra un **código de recuperación** (tipo `ABCD-EFGH-JKLM-NPQR`) que hay que guardar; no se puede continuar sin marcar «Lo he guardado». En «Iniciar sesión → ¿Olvidaste tu contraseña?» se pone el usuario, el código y una contraseña nueva. Al usarlo se cierran las sesiones abiertas en otros móviles y se da un código nuevo. Desde «Mi perfil» se puede crear un código nuevo (pide la contraseña). No hace falta email.
 - **Mi perfil** (toca tu nombre en el menú): cambiar el nombre de usuario y la contraseña, cerrar sesión, y personalizar **avatar** (cualquier luchador o aspecto que tengas), **color del nombre**, **título** y **fondo de la tarjeta**. Algunos colores, títulos y fondos se desbloquean con trofeos, victorias, derribos, partidas o niveles del pase (`game/cosmetics.js`).
 - En una sala privada, toca el nombre de un jugador para ver su tarjeta de perfil.
+
+## Amigos
+
+- En el menú **Amigos** escribe el nombre de usuario de alguien y pulsa **Añadir**: le llega una solicitud (punto rojo en su botón «Amigos») que puede aceptar o rechazar. Si los dos se lo pedís, se aceptan solos.
+- La lista muestra quién está **conectado** y qué hace (en el menú, en una sala, buscando partida, jugando o desconectado hace cuánto), y se actualiza al momento.
+- **Unirse:** si un amigo está en una sala privada, entra con un toque.
+- **Invitar:** desde tu sala, «Invitar amigos» les manda un aviso con un botón «Unirse» (si están en mitad de una partida, lo ven al acabar).
+- También puedes ver su perfil o eliminarlo de la lista. Máximo 100 amigos.
 
 ## Qué incluye
 
@@ -57,6 +66,6 @@ Para probar desde un ordenador también funcionan WASD, el ratón y la tecla `E`
 
 - `server.js`: Express + Socket.IO, perfiles, emparejamiento, salas privadas, bucle a 30 ticks/s.
 - `game/game.js`: simulación autoritativa. `game/bot.js`: IA. `game/map.js`: colisiones y caminos.
-- `game/constants.js`: luchadores, aspectos, modos, mapas y niveles. `game/pass.js`: recompensas del pase. `game/profiles.js`: cuentas, sesiones, guardado y recompensas. `game/cosmetics.js`: opciones de personalización.
+- `game/constants.js`: luchadores, aspectos, modos, mapas y niveles. `game/pass.js`: recompensas del pase. `game/profiles.js`: cuentas, sesiones, guardado y recompensas. `game/cosmetics.js`: opciones de personalización. `game/friends.js`: amigos y solicitudes.
 - `public/js/art.js`: todo el arte vectorial (personajes y escenario). `game.js`: render de partida y controles táctiles. `ui.js`: menús e instalación. `audio.js`: sonidos.
 - `public/manifest.webmanifest`, `public/sw.js` y `public/icons/`: lo que permite instalarlo como app.

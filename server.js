@@ -7,6 +7,7 @@ const { BRAWLERS, MODES, MAPS, BOT_NAMES, LEVELS, BOT_LEVEL } = require('./game/
 const { PASS } = require('./game/pass');
 const COSMETICS = require('./game/cosmetics');
 const Profiles = require('./game/profiles');
+const Friends = require('./game/friends');
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 8;
@@ -90,6 +91,60 @@ function refreshMember(m) {
   Object.assign(m, fresh);
 }
 
+// ------------------------------------------------------------ presencia y amigos
+const online = new Map(); // pid -> Set(socketId)
+
+function presence(pid) {
+  const ids = online.get(pid);
+  if (!ids || !ids.size) {
+    const p = Profiles.byId(pid);
+    return { status: 'offline', since: p && p.lastSeen ? p.lastSeen : null };
+  }
+  let best = { status: 'online' };
+  for (const sid of ids) {
+    const s = io.sockets.sockets.get(sid);
+    const room = s && rooms.get(s.data.room);
+    if (!room) continue;
+    if (room.game) return { status: 'jugando' };
+    best = room.public ? { status: 'buscando' } : { status: 'sala', code: room.code, count: room.members.length };
+  }
+  return best;
+}
+
+function emitToPid(pid, ev, data) {
+  for (const sid of online.get(pid) || []) {
+    const s = io.sockets.sockets.get(sid);
+    if (s) s.emit(ev, data);
+  }
+}
+
+function sendFriends(pid) {
+  const p = Profiles.byId(pid);
+  if (p && online.has(pid)) emitToPid(pid, 'friends', Friends.listFor(p, presence));
+}
+
+// Avisar a los amigos conectados de un cambio de estado (agrupado).
+const dirty = new Set();
+let flushQueued = false;
+function touch(pid) {
+  if (!pid) return;
+  dirty.add(pid);
+  if (flushQueued) return;
+  flushQueued = true;
+  setImmediate(() => {
+    flushQueued = false;
+    const targets = new Set();
+    for (const id of dirty) {
+      const p = Profiles.byId(id);
+      if (!p) continue;
+      for (const f of Friends.ensure(p).friends) if (online.has(f)) targets.add(f);
+    }
+    dirty.clear();
+    targets.forEach(sendFriends);
+  });
+}
+const touchRoom = (room) => room.members.forEach((m) => { if (!m.isBot) touch(m.pid); });
+
 function startRoomGame(room) {
   room.members.forEach(refreshMember);
   const game = new Game({
@@ -99,6 +154,7 @@ function startRoomGame(room) {
   room.game = game;
   io.to(room.code).emit('gameStart', { ...game.startInfo(), public: !!room.public });
   broadcastRoom(room);
+  touchRoom(room);
 }
 
 function outcomeFor(results, p) {
@@ -135,6 +191,7 @@ function endRoomGame(room, game, results) {
   } else {
     broadcastRoom(room);
   }
+  touchRoom(room);
 }
 
 io.on('connection', (socket) => {
@@ -156,10 +213,30 @@ io.on('connection', (socket) => {
 
   // ------------------------------------------------------------ cuentas
   function signedIn(p, token) {
+    goOffline();
     socket.data.pid = p.id;
     socket.data.guest = null;
+    if (!online.has(p.id)) online.set(p.id, new Set());
+    online.get(p.id).add(socket.id);
     if (token) socket.emit('token', token);
     sendProfile();
+    sendFriends(p.id);
+    touch(p.id);
+  }
+
+  function goOffline() {
+    const pid = socket.data.pid;
+    if (!pid) return;
+    const set = online.get(pid);
+    if (set) {
+      set.delete(socket.id);
+      if (!set.size) {
+        online.delete(pid);
+        const p = Profiles.byId(pid);
+        if (p) { p.lastSeen = Date.now(); Profiles.save(); }
+      }
+    }
+    touch(pid);
   }
 
   socket.on('auth', ({ token } = {}) => {
@@ -184,6 +261,25 @@ io.on('connection', (socket) => {
     const r = await Profiles.register({ username, password, guest });
     if (r.error) return socket.emit('authError', r.error);
     signedIn(r.profile, r.token);
+    socket.emit('recoveryCode', { code: r.recoveryCode, reason: 'register' });
+  });
+
+  socket.on('resetPassword', async ({ username, code, password } = {}) => {
+    if (tooFast()) return socket.emit('authError', 'Espera un momento…');
+    const r = await Profiles.resetPassword({ username, code, password });
+    if (r.error) return socket.emit('authError', r.error);
+    signedIn(r.profile, r.token);
+    socket.emit('recoveryCode', { code: r.recoveryCode, reason: 'reset' });
+  });
+
+  socket.on('newRecoveryCode', async ({ password } = {}) => {
+    const p = prof();
+    if (!p) return;
+    if (tooFast()) return err('Espera un momento…');
+    const r = await Profiles.regenerateRecovery(p, { password });
+    if (r.error) return err(r.error);
+    sendProfile();
+    socket.emit('recoveryCode', { code: r.recoveryCode, reason: 'new' });
   });
 
   socket.on('login', async ({ username, password } = {}) => {
@@ -196,6 +292,7 @@ io.on('connection', (socket) => {
   socket.on('logout', ({ token } = {}) => {
     leave();
     Profiles.logout(token);
+    goOffline();
     socket.data.pid = null;
     socket.emit('needAuth', {});
   });
@@ -224,6 +321,7 @@ io.on('connection', (socket) => {
     if (res.rewards) socket.emit('rewards', res.rewards);
     // Si cambia el luchador o el nombre estando en una sala privada, actualizarla.
     const room = getRoom();
+    if (['setUsername', 'customize'].includes(action)) touch(p.id);
     if (room && !room.game && !room.public && ['select', 'setUsername', 'customize'].includes(action)) {
       const m = room.members.find((x) => x.id === socket.id);
       if (m) { refreshMember(m); broadcastRoom(room); }
@@ -237,6 +335,7 @@ io.on('connection', (socket) => {
     socket.data.room = room.code;
     if (!room.public) socket.emit('joined', { code: room.code, you: socket.id });
     broadcastRoom(room);
+    touchRoom(room);
   }
 
   function leave() {
@@ -245,6 +344,8 @@ io.on('connection', (socket) => {
     room.members = room.members.filter((m) => m.id !== socket.id);
     socket.leave(room.code);
     socket.data.room = null;
+    touch(socket.data.pid);
+    touchRoom(room);
     if (room.game) room.game.removePlayer(socket.id);
     const humans = room.members.filter((m) => !m.isBot);
     if (!humans.length) {
@@ -257,7 +358,55 @@ io.on('connection', (socket) => {
   }
 
   socket.on('leaveRoom', leave);
-  socket.on('disconnect', leave);
+  socket.on('disconnect', () => { leave(); goOffline(); });
+
+  // ------------------------------------------------------------ amigos
+  const friendAct = (fn) => ({ name } = {}) => {
+    const p = prof();
+    if (!p) return;
+    const r = fn(p, String(name || ''));
+    if (r.error) return err(r.error);
+    if (r.msg) socket.emit('toast', r.msg);
+    sendFriends(p.id);
+    for (const pid of r.notify || []) sendFriends(pid);
+    if (r.requestTo) emitToPid(r.requestTo, 'toast', `👋 ${p.name} quiere ser tu amigo.`);
+  };
+  socket.on('friends:get', () => { const p = prof(); if (p) sendFriends(p.id); });
+  socket.on('friends:add', friendAct(Friends.request));
+  socket.on('friends:accept', friendAct(Friends.accept));
+  socket.on('friends:decline', friendAct(Friends.decline));
+  socket.on('friends:remove', friendAct(Friends.remove));
+
+  const friendByName = (name) => {
+    const p = prof();
+    const tid = Profiles.idByName(name);
+    const t = tid && Profiles.byId(tid);
+    if (!p || !t || !Friends.areFriends(p, t)) return null;
+    return t;
+  };
+
+  socket.on('friends:invite', ({ name } = {}) => {
+    const p = prof();
+    const t = friendByName(name);
+    if (!t) return err('Solo puedes invitar a tus amigos.');
+    const room = getRoom();
+    if (!room || room.public) return err('Primero crea una sala privada.');
+    if (!online.has(t.id)) return err(`${t.name} no está conectado.`);
+    const now = Date.now();
+    socket.data.invites = socket.data.invites || {};
+    if (socket.data.invites[t.id] && now - socket.data.invites[t.id] < 5000) return err('Ya le has invitado, espera un poco.');
+    socket.data.invites[t.id] = now;
+    emitToPid(t.id, 'invite', { from: p.name, look: Profiles.looks(p), code: room.code, mode: room.mode });
+    socket.emit('toast', `Invitación enviada a ${t.name}.`);
+  });
+
+  socket.on('friends:join', ({ name } = {}) => {
+    const t = friendByName(name);
+    if (!t) return err('Solo puedes unirte a salas de tus amigos.');
+    const pr = presence(t.id);
+    if (pr.status !== 'sala') return err(pr.status === 'jugando' ? `${t.name} está en mitad de una partida.` : `${t.name} no está en una sala privada.`);
+    joinByCode(pr.code);
+  });
 
   // ------------------------------------------------------------ partida rápida
   socket.on('quickPlay', ({ mode } = {}) => {
@@ -283,7 +432,8 @@ io.on('connection', (socket) => {
     joinRoom(room);
   });
 
-  socket.on('joinRoom', ({ code } = {}) => {
+  socket.on('joinRoom', ({ code } = {}) => joinByCode(code));
+  function joinByCode(code) {
     if (!prof()) return err('Perfil no cargado.');
     const room = rooms.get(String(code || '').toUpperCase().trim());
     if (!room || room.public) return err('No existe ninguna sala con ese código.');
@@ -296,7 +446,7 @@ io.on('connection', (socket) => {
     }
     leave();
     joinRoom(room);
-  });
+  }
 
   socket.on('setTeam', ({ team } = {}) => {
     const room = getRoom();

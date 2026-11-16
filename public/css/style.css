@@ -469,3 +469,37 @@ html, body { overscroll-behavior: none; touch-action: manipulation; -webkit-touc
   .modal-card .pcard .pn { font-size: 22px; }
   .modal-card .pcard .ps b { font-size: 16px; }
 }
+
+/* Recuperación y amigos */
+.link-btn { background: none; border: 0; color: var(--blue-d); font-weight: 900; text-decoration: underline; cursor: pointer; font-size: 14px; padding: 2px; }
+.rec-code { font-family: var(--font-title); font-size: clamp(22px, 5vw, 34px); letter-spacing: 2px; background: #fff; border: 3px dashed #000; border-radius: 12px; padding: 8px 14px; user-select: all; -webkit-user-select: all; }
+.rec-check { display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 14px; text-align: left; }
+.rec-check input { width: 22px; height: 22px; flex: none; }
+.friends-wrap { align-items: stretch; }
+.fr-list { width: min(520px, 100%); max-height: 100%; overflow-y: auto; }
+.fr-side { display: flex; flex-direction: column; gap: 14px; width: min(400px, 100%); }
+.fr-side .fr-card { width: 100%; }
+.fr-item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: #fff; border: 2px solid var(--line); margin-top: 6px; }
+.fr-item img { width: 46px; height: 46px; border-radius: 10px; background: linear-gradient(#77b1ff, #3a74e0); border: 2px solid #000; flex: none; }
+.fr-item .fi { flex: 1; min-width: 0; }
+.fr-item .fn { font-family: var(--font-title); font-size: 18px; -webkit-text-stroke: 0.8px #000; paint-order: stroke fill; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.fr-item .fs { font-size: 12px; font-weight: 900; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.fr-item .fb { display: flex; gap: 5px; flex: none; }
+.fr-item .btn { padding: 5px 9px; font-size: 14px; }
+.st-dot { width: 10px; height: 10px; border-radius: 50%; background: #9a9a9a; border: 1.5px solid #000; flex: none; }
+.st-online, .st-sala { background: #3fd65a; }
+.st-jugando, .st-buscando { background: #ffb800; }
+.fr-sec { margin-top: 10px; font-size: 12px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.fr-empty { color: var(--muted); font-size: 14px; padding: 10px 2px; }
+.invite-banner {
+  position: fixed; z-index: 60; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  width: min(460px, calc(100vw - 24px)); display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  background: var(--card); border: 3px solid #000; border-radius: 16px; box-shadow: 0 6px 0 rgba(0, 0, 0, 0.45); animation: popin 0.3s ease-out;
+}
+.invite-banner img { width: 44px; height: 44px; border-radius: 10px; border: 2px solid #000; background: linear-gradient(#77b1ff, #3a74e0); }
+.invite-banner .ib { flex: 1; font-weight: 900; font-size: 14px; }
+.invite-banner .btn { padding: 6px 10px; font-size: 15px; }
+.inv-list { width: 100%; max-height: 50vh; overflow-y: auto; }
+.rec-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; width: 100%; }
+.fr-item .fn { -webkit-text-stroke: 0; }
+@media (max-height: 520px) { .rec-code { padding: 4px 10px; font-size: 22px; } }

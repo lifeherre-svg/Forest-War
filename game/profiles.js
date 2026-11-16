@@ -101,8 +101,60 @@ function resolveToken(token) {
   return {};
 }
 
-// Intentos fallidos de inicio de sesión por nombre.
+// Intentos fallidos de inicio de sesión / recuperación por nombre.
 const failures = new Map();
+function blocked(low) {
+  const f = failures.get(low);
+  return f && f.until > Date.now() ? `Demasiados intentos. Espera ${Math.ceil((f.until - Date.now()) / 1000)} s.` : null;
+}
+function fail(low) {
+  const f = failures.get(low);
+  const n = (f ? f.n : 0) + 1;
+  failures.set(low, { n, until: n >= 5 ? Date.now() + 30000 * Math.min(10, n - 4) : 0 });
+}
+
+// Código de recuperación: se muestra una sola vez y se guarda cifrado.
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function makeRecoveryCode() {
+  const bytes = crypto.randomBytes(16);
+  let c = '';
+  for (let i = 0; i < 16; i++) c += CODE_CHARS[bytes[i] % CODE_CHARS.length] + (i % 4 === 3 && i < 15 ? '-' : '');
+  return c;
+}
+const normCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+async function newRecovery(p) {
+  const code = makeRecoveryCode();
+  p.recovery = await hashPassword(normCode(code));
+  save();
+  return code;
+}
+
+function dropSessions(p) {
+  for (const h of p.sessions || []) bySession.delete(h);
+  p.sessions = [];
+}
+
+async function resetPassword({ username, code, password }) {
+  const low = String(username || '').trim().toLowerCase();
+  const b = blocked(low);
+  if (b) return { error: b };
+  const pwErr = checkPassword(password);
+  if (pwErr) return { error: pwErr };
+  const pid = byName.get(low);
+  const p = pid && profiles[pid];
+  const ok = p && p.recovery ? await verifyPassword(normCode(code), p.recovery) : false;
+  if (!ok) { fail(low); return { error: 'Usuario o código de recuperación incorrectos.' }; }
+  failures.delete(low);
+  p.auth = await hashPassword(String(password));
+  dropSessions(p);
+  const recoveryCode = await newRecovery(p);
+  return { profile: p, token: newSession(p), recoveryCode };
+}
+
+async function regenerateRecovery(p, { password }) {
+  if (!(await verifyPassword(password, p.auth))) return { error: 'La contraseña no es correcta.' };
+  return { recoveryCode: await newRecovery(p) };
+}
 
 async function register({ username, password, guest }) {
   const u = checkUsername(username);
@@ -117,21 +169,18 @@ async function register({ username, password, guest }) {
   p.auth = auth;
   if (!guest) p.createdAt = Date.now();
   byName.set(u.name.toLowerCase(), p.id);
-  return { profile: p, token: newSession(p) };
+  const recoveryCode = await newRecovery(p);
+  return { profile: p, token: newSession(p), recoveryCode };
 }
 
 async function login({ username, password }) {
   const low = String(username || '').trim().toLowerCase();
-  const f = failures.get(low);
-  if (f && f.until > Date.now()) return { error: `Demasiados intentos. Espera ${Math.ceil((f.until - Date.now()) / 1000)} s.` };
+  const b = blocked(low);
+  if (b) return { error: b };
   const pid = byName.get(low);
   const p = pid && profiles[pid];
   const ok = p ? await verifyPassword(password, p.auth) : await verifyPassword(password, { salt: 'x', hash: '00' }) && false;
-  if (!ok) {
-    const n = (f ? f.n : 0) + 1;
-    failures.set(low, { n, until: n >= 5 ? Date.now() + 30000 : 0 });
-    return { error: 'Usuario o contraseña incorrectos.' };
-  }
+  if (!ok) { fail(low); return { error: 'Usuario o contraseña incorrectos.' }; }
   failures.delete(low);
   return { profile: p, token: newSession(p) };
 }
@@ -235,7 +284,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 function publicProfile(p) {
   return {
-    name: p.name, ...looks(p), registered: !!p.auth,
+    name: p.name, ...looks(p), registered: !!p.auth, hasRecovery: !!p.recovery,
     unlocks: { nameColors: unlockedKeys(p, NAME_COLORS), titles: unlockedKeys(p, TITLES), banners: unlockedKeys(p, BANNERS) },
     createdAt: p.createdAt, coins: p.coins, emeralds: p.emeralds,
     owned: p.owned, trophies: p.trophies, totalTrophies: totalTrophies(p), selected: p.selected,
@@ -421,7 +470,11 @@ function applyMatch(p, result) {
   return { trophies, xp, coins, newTier: passInfo(p).tier > passBefore ? passInfo(p).tier : 0 };
 }
 
+const byId = (pid) => profiles[pid] || null;
+const idByName = (name) => byName.get(String(name || '').trim().toLowerCase()) || null;
+
 module.exports = {
+  byId, idByName, save, resetPassword, regenerateRecovery,
   newProfile, get, publicProfile, act, applyMatch, totalTrophies, cleanName,
   register, login, logout, resolveToken, changePassword, looks, card, findCardByName,
 };

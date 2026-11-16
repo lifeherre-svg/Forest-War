@@ -47,7 +47,7 @@
     $('modalBody').onclick = (e) => { if (onClick) onClick(e); };
   }
   const closeModal = () => $('modal').classList.add('hidden');
-  $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+  $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal' && !$('recCode')) closeModal(); });
 
   function fmtLeft(ms) {
     if (ms <= 0) return '0m';
@@ -119,13 +119,7 @@
     P = p;
     if (screen === 'loading' || screen === 'auth') {
       show('home');
-      if (welcome) {
-        welcome = false;
-        modal(`<h3 class="stroke">¡Bienvenido, ${esc(P.name)}!</h3>
-          <p class="muted">Tu cuenta está lista. Personaliza tu perfil tocando tu nombre arriba a la izquierda.</p>
-          <p class="small muted">🎁 Durante tu primera semana el <b>Pase Premium es gratis</b>.</p>
-          <button class="btn btn-yellow big" data-close>¡A jugar!</button>`, (e) => { if (e.target.closest('[data-close]')) closeModal(); });
-      }
+      if (!welcome && !P.hasRecovery) setTimeout(() => toast('🔑 Crea tu código de recuperación en «Mi perfil» por si olvidas la contraseña.'), 800);
       if (pendingJoin) { socket.emit('joinRoom', { code: pendingJoin }); pendingJoin = null; }
     } else render();
   });
@@ -137,11 +131,44 @@
   let authTab = 'register';
   function setAuthTab(tab) {
     authTab = tab;
-    $$('.auth-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    $$('.auth-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === (tab === 'reset' ? 'login' : tab)));
     $('registerForm').classList.toggle('hidden', tab !== 'register');
     $('loginForm').classList.toggle('hidden', tab !== 'login');
-    $('regMsg').textContent = ''; $('logMsg').textContent = '';
+    $('resetForm').classList.toggle('hidden', tab !== 'reset');
+    $('regMsg').textContent = ''; $('logMsg').textContent = ''; $('rsMsg').textContent = '';
   }
+  $('forgotBtn').onclick = () => { FW.Sfx.click(); $('rsUser').value = $('logUser').value; setAuthTab('reset'); };
+  $('backLoginBtn').onclick = () => { FW.Sfx.click(); setAuthTab('login'); };
+  $('resetForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const p1 = $('rsPass').value;
+    if (p1.length < 6) return ($('rsMsg').textContent = 'La contraseña debe tener al menos 6 caracteres.');
+    if (p1 !== $('rsPass2').value) return ($('rsMsg').textContent = 'Las contraseñas no coinciden.');
+    $('rsMsg').textContent = '';
+    FW.Sfx.click();
+    socket.emit('resetPassword', { username: $('rsUser').value.trim(), code: $('rsCode').value, password: p1 });
+  });
+
+  // Código de recuperación: se enseña una vez y hay que confirmar que se ha guardado.
+  socket.on('recoveryCode', ({ code, reason }) => {
+    welcome = false;
+    const head = reason === 'register'
+      ? `<h3 class="stroke">¡Bienvenido, ${esc(P ? P.name : '')}!</h3><p class="muted" style="margin:0">Tu cuenta está lista. 🎁 Tu primera semana el Pase Premium es gratis.</p>`
+      : reason === 'reset' ? '<h3 class="stroke">¡Contraseña cambiada!</h3><p class="muted" style="margin:0">Tu código anterior ya no sirve. Este es el nuevo:</p>'
+        : '<h3 class="stroke">Nuevo código</h3><p class="muted" style="margin:0">El código anterior ya no sirve.</p>';
+    modal(`${head}
+      <div><b>🔑 Tu código de recuperación</b><p class="small muted" style="margin:2px 0 0">Lo necesitarás si olvidas la contraseña. Hazle una captura o apúntalo, y no se lo enseñes a nadie.</p></div>
+      <div class="rec-code" id="recCode">${esc(code)}</div>
+      <div class="rec-row"><button class="btn btn-blue" data-copy>Copiar</button>
+        <label class="rec-check"><input type="checkbox" id="recOk"> Lo he guardado</label>
+        <button class="btn btn-yellow" data-close disabled>Continuar</button></div>`, async (e) => {
+      if (e.target.closest('[data-copy]')) {
+        try { await navigator.clipboard.writeText(code); toast('Código copiado.'); } catch (er) { toast('Mantén pulsado el código para copiarlo.'); }
+      }
+      if (e.target.id === 'recOk') $('modalBody').querySelector('[data-close]').disabled = !e.target.checked;
+      if (e.target.closest('[data-close]') && $('recOk').checked) closeModal();
+    });
+  });
   $$('.auth-tabs button').forEach((b) => (b.onclick = () => { FW.Sfx.click(); setAuthTab(b.dataset.tab); }));
   socket.on('needAuth', (info = {}) => {
     P = null;
@@ -154,7 +181,7 @@
     setAuthTab(store.get('fw-had-account') ? 'login' : 'register');
     drawAuthArt();
   });
-  socket.on('authError', (m) => { welcome = false; $(authTab === 'register' ? 'regMsg' : 'logMsg').textContent = m; });
+  socket.on('authError', (m) => { welcome = false; $({ register: 'regMsg', login: 'logMsg', reset: 'rsMsg' }[authTab]).textContent = m; });
   const USER_RE = /^[A-Za-z0-9_ÁÉÍÓÚÜÑáéíóúüñ]{3,14}$/;
   $('registerForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -185,6 +212,10 @@
 
   // ------------------------------------------------------------- perfil
   const nameColor = (look) => (DATA.cosmetics.nameColors[look && look.nameColor] || DATA.cosmetics.nameColors.blanco).color;
+  const nameStyle = (look) => {
+    const c = nameColor(look);
+    return c === '#ffffff' ? 'color:inherit;-webkit-text-stroke:0' : `color:${c};-webkit-text-stroke:0.8px #000`;
+  };
   const titleName = (look) => (DATA.cosmetics.titles[look && look.title] || DATA.cosmetics.titles.novato).name;
   const reqText = (r) => ({ trophies: `${r.n} trofeos`, wins: `${r.n} victorias`, games: `${r.n} partidas`, kills: `${r.n} derribos`, brawlers: `${r.n} luchadores`, passTier: `nivel ${r.n} del pase` }[r.t] || '');
 
@@ -269,6 +300,16 @@
       }
     });
   };
+  $('recoveryBtn').onclick = () => {
+    FW.Sfx.click();
+    modal(`<h3 class="stroke">Código de recuperación</h3>
+      <p class="muted">${P.hasRecovery ? 'Crear un código nuevo invalida el anterior.' : 'Aún no tienes código. Créalo para poder recuperar tu cuenta si olvidas la contraseña.'}</p>
+      <label class="field" style="width:100%"><span>Tu contraseña</span><input id="rcPass" type="password" autocomplete="current-password"></label>
+      <div class="row-btns" style="width:100%"><button class="btn btn-ghost" data-no>Cancelar</button><button class="btn btn-purple" data-yes>Crear código</button></div>`, (e) => {
+      if (e.target.closest('[data-no]')) closeModal();
+      if (e.target.closest('[data-yes]')) socket.emit('newRecoveryCode', { password: $('rcPass').value });
+    });
+  };
   $('logoutBtn').onclick = () => {
     modal(`<h3 class="stroke">¿Cerrar sesión?</h3><p class="muted">Podrás volver a entrar con tu nombre de usuario y contraseña.</p>
       <div class="row-btns" style="width:100%"><button class="btn btn-ghost" data-no>Cancelar</button><button class="btn btn-red" data-yes>Cerrar sesión</button></div>`, (e) => {
@@ -299,6 +340,8 @@
     if (screen === 'pass') renderPass();
     if (screen === 'room') renderRoom();
     if (screen === 'profile') renderProfile();
+    if (screen === 'friends') renderFriends();
+    if (screen !== 'game' && pendingInvite && $('inviteBanner').classList.contains('hidden')) showInvite();
   }
 
   function claimableCount() {
@@ -619,6 +662,127 @@
     }
   });
 
+  // ------------------------------------------------------------- amigos
+  let F = { friends: [], incoming: [], outgoing: [] };
+  const STATUS = { online: 'En el menú', sala: 'En una sala privada', buscando: 'Buscando partida', jugando: 'Jugando', offline: 'Desconectado' };
+  function ago(t) {
+    if (!t) return '';
+    const m = Math.floor((Date.now() - t) / 60000);
+    if (m < 1) return 'hace un momento';
+    if (m < 60) return `hace ${m} min`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `hace ${h} h`;
+    return `hace ${Math.floor(h / 24)} d`;
+  }
+  const avatarOf = (x) => portrait(x.look.avatar.b, x.look.avatar.s, 64);
+  const fName = (x) => `<div class="fn" data-view="${esc(x.name)}" style="${nameStyle(x.look)}">${esc(x.name)}</div>`;
+
+  socket.on('friends', (data) => {
+    F = data;
+    $('friendsDot').classList.toggle('hidden', !F.incoming.length);
+    if (screen === 'friends') renderFriends();
+    if ($('invList')) renderInviteList();
+  });
+
+  function renderFriends() {
+    const online = F.friends.filter((f) => f.status !== 'offline').length;
+    $('frCount').textContent = F.friends.length ? `(${online} conectados de ${F.friends.length})` : '';
+    let req = '';
+    if (F.incoming.length) {
+      req += '<div class="fr-sec">Solicitudes recibidas</div>';
+      req += F.incoming.map((x) => `<div class="fr-item"><img src="${avatarOf(x)}" alt=""><div class="fi">${fName(x)}<div class="fs">🏆 ${x.trophies} · quiere ser tu amigo</div></div>
+        <div class="fb"><button class="btn btn-green" data-f="accept" data-n="${esc(x.name)}">Aceptar</button><button class="btn btn-ghost" data-f="decline" data-n="${esc(x.name)}">✕</button></div></div>`).join('');
+    }
+    if (F.outgoing.length) {
+      req += '<div class="fr-sec">Solicitudes enviadas</div>';
+      req += F.outgoing.map((x) => `<div class="fr-item"><img src="${avatarOf(x)}" alt=""><div class="fi">${fName(x)}<div class="fs">Esperando respuesta…</div></div>
+        <div class="fb"><button class="btn btn-ghost" data-f="decline" data-n="${esc(x.name)}">Cancelar</button></div></div>`).join('');
+    }
+    $('frRequests').innerHTML = req;
+    if (!F.friends.length) {
+      $('frList').innerHTML = '<div class="fr-empty">Aún no tienes amigos. Escribe el nombre de usuario de un amigo y pulsa «Añadir».</div>';
+      return;
+    }
+    $('frList').innerHTML = '<div class="fr-sec">Amigos</div>' + F.friends.map((x) => {
+      const st = x.status === 'offline' ? `Desconectado ${ago(x.since)}` : STATUS[x.status];
+      let btn = '';
+      if (x.status === 'sala') btn = `<button class="btn btn-blue" data-f="join" data-n="${esc(x.name)}">Unirse</button>`;
+      return `<div class="fr-item"><img src="${avatarOf(x)}" alt=""><div class="fi">${fName(x)}<div class="fs"><span class="st-dot st-${x.status}"></span>${st} · 🏆 ${x.trophies}</div></div>
+        <div class="fb">${btn}<button class="btn btn-ghost" data-f="remove" data-n="${esc(x.name)}" title="Eliminar amigo">🗑</button></div></div>`;
+    }).join('');
+  }
+
+  $('addFriendForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const n = $('addFriendInput').value.trim();
+    if (!n) return;
+    FW.Sfx.click();
+    socket.emit('friends:add', { name: n });
+    $('addFriendInput').value = '';
+  });
+  $('friends').addEventListener('click', (e) => {
+    const v = e.target.closest('[data-view]');
+    if (v) return viewProfile(v.dataset.view);
+    const b = e.target.closest('[data-f]');
+    if (!b) return;
+    FW.Sfx.click();
+    const name = b.dataset.n;
+    if (b.dataset.f === 'remove') {
+      modal(`<h3 class="stroke">¿Eliminar a ${esc(name)}?</h3><p class="muted">Dejará de estar en tu lista de amigos.</p>
+        <div class="row-btns" style="width:100%"><button class="btn btn-ghost" data-no>Cancelar</button><button class="btn btn-red" data-yes>Eliminar</button></div>`, (ev) => {
+        if (ev.target.closest('[data-no]')) closeModal();
+        if (ev.target.closest('[data-yes]')) { socket.emit('friends:remove', { name }); closeModal(); }
+      });
+      return;
+    }
+    socket.emit('friends:' + b.dataset.f, { name });
+  });
+
+  // Invitar desde la sala
+  function renderInviteList() {
+    const list = F.friends.filter((f) => f.status !== 'offline');
+    $('invList').innerHTML = list.length ? list.map((x) => {
+      const here = room && x.status === 'sala' && x.code === room.code;
+      const busy = x.status === 'jugando';
+      return `<div class="fr-item"><img src="${avatarOf(x)}" alt=""><div class="fi">${fName(x)}<div class="fs"><span class="st-dot st-${x.status}"></span>${here ? 'Ya está en tu sala' : STATUS[x.status]}</div></div>
+        <div class="fb"><button class="btn btn-green" data-inv="${esc(x.name)}" ${here || busy ? 'disabled' : ''}>Invitar</button></div></div>`;
+    }).join('') : `<div class="fr-empty">${F.friends.length ? 'Ninguno de tus amigos está conectado ahora.' : 'Aún no tienes amigos. Añádelos desde el menú «Amigos».'}</div>`;
+  }
+  $('inviteFriendsBtn').onclick = () => {
+    FW.Sfx.click();
+    modal(`<h3 class="stroke">Invitar amigos</h3><div class="inv-list" id="invList"></div>
+      <button class="btn btn-yellow big" data-close>Cerrar</button>`, (e) => {
+      if (e.target.closest('[data-close]')) closeModal();
+      const b = e.target.closest('[data-inv]');
+      if (b) { FW.Sfx.click(); socket.emit('friends:invite', { name: b.dataset.inv }); b.disabled = true; b.textContent = '¡Enviada!'; }
+    });
+    renderInviteList();
+    socket.emit('friends:get');
+  };
+
+  // Invitaciones recibidas
+  let pendingInvite = null;
+  socket.on('invite', (inv) => {
+    pendingInvite = inv;
+    FW.Sfx.reward();
+    try { if (navigator.vibrate) navigator.vibrate([60, 40, 60]); } catch (e) { /* nada */ }
+    if (!FW.Game.active) showInvite();
+  });
+  function showInvite() {
+    const inv = pendingInvite;
+    if (!inv) return;
+    const b = $('inviteBanner');
+    b.innerHTML = `<img src="${portrait(inv.look.avatar.b, inv.look.avatar.s, 64)}" alt=""><div class="ib"><span style="${nameStyle(inv.look)}">${esc(inv.from)}</span> te invita a su sala · ${esc(DATA.modes[inv.mode].name)}</div>
+      <button class="btn btn-green" data-inv-yes>Unirse</button><button class="btn btn-ghost" data-inv-no>✕</button>`;
+    b.classList.remove('hidden');
+    clearTimeout(b._t);
+    b._t = setTimeout(() => { b.classList.add('hidden'); pendingInvite = null; }, 30000);
+  }
+  $('inviteBanner').addEventListener('click', (e) => {
+    if (e.target.closest('[data-inv-yes]') && pendingInvite) { FW.Sfx.click(); socket.emit('joinRoom', { code: pendingInvite.code }); }
+    if (e.target.closest('[data-inv-yes]') || e.target.closest('[data-inv-no]')) { $('inviteBanner').classList.add('hidden'); pendingInvite = null; }
+  });
+
   // ------------------------------------------------------------- salas privadas
   $('createBtn').onclick = () => { FW.Sfx.click(); socket.emit('createRoom'); };
   const join = () => {
@@ -696,7 +860,7 @@
         const tags = [];
         if (x.id === room.hostId) tags.push('<span class="tag">Anfitrión</span>');
         if (x.id === myId) tags.push('<span class="tag">Tú</span>');
-        const nm = x.isBot ? esc(x.name) : `<span class="name-tag" style="color:${nameColor(x.look) === '#ffffff' ? 'inherit' : nameColor(x.look)};-webkit-text-stroke:${nameColor(x.look) === '#ffffff' ? 0 : '0.6px #000'}">${esc(x.name)}</span>`;
+        const nm = x.isBot ? esc(x.name) : `<span class="name-tag" style="${nameStyle(x.look)}">${esc(x.name)}</span>`;
         const ttl = x.isBot ? '' : `<div class="mtitle">${esc(titleName(x.look))}</div>`;
         html += `<div class="member${x.id === myId ? ' me' : ''}"><img src="${portrait(x.brawler, x.skin, 64)}" alt=""><div class="nm"${x.isBot ? '' : ` data-view="${esc(x.name)}"`}>${nm}${ttl}<div class="sub">${b.name} · Nv ${x.level}${x.isBot ? ' · Bot ' + DIFF_NAMES[x.difficulty] : ''}</div></div>${tags.join(' ')}`;
         if (x.isBot && isHost && !room.inGame) {

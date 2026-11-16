@@ -56,6 +56,21 @@
             <input id="logPass" type="password" name="password" autocomplete="current-password" required></label>
           <p class="msg" id="logMsg"></p>
           <button class="btn btn-blue big" type="submit">Entrar</button>
+          <button class="link-btn" type="button" id="forgotBtn">¿Olvidaste tu contraseña?</button>
+        </form>
+        <form id="resetForm" class="hidden" autocomplete="off">
+          <p class="hint" style="margin:0">Usa el <b>código de recuperación</b> que te dimos al crear la cuenta.</p>
+          <label class="field"><span>Nombre de usuario</span>
+            <input id="rsUser" maxlength="14" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+          <label class="field"><span>Código de recuperación</span>
+            <input id="rsCode" maxlength="24" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" required></label>
+          <label class="field"><span>Nueva contraseña</span>
+            <input id="rsPass" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres" required></label>
+          <label class="field"><span>Repite la nueva contraseña</span>
+            <input id="rsPass2" type="password" autocomplete="new-password" required></label>
+          <p class="msg" id="rsMsg"></p>
+          <button class="btn btn-green big" type="submit">Cambiar contraseña</button>
+          <button class="link-btn" type="button" id="backLoginBtn">◀ Volver a iniciar sesión</button>
         </form>
       </div>
     </div>
@@ -74,6 +89,7 @@
         <div class="row-btns col">
           <button class="btn btn-yellow" id="renameBtn">Cambiar nombre</button>
           <button class="btn btn-blue" id="passwordBtn">Cambiar contraseña</button>
+          <button class="btn btn-purple" id="recoveryBtn">Código de recuperación</button>
           <button class="btn btn-red" id="logoutBtn">Cerrar sesión</button>
         </div>
       </div>
@@ -102,7 +118,7 @@
     <nav class="home-left">
       <button class="menu-btn" data-go="shop"><span class="mi">🛒</span><span>Tienda</span><span class="dot hidden" id="shopDot"></span></button>
       <button class="menu-btn" data-go="brawlers"><span class="mi">🐾</span><span>Luchadores</span></button>
-      <button class="menu-btn" data-go="friends"><span class="mi">👥</span><span>Amigos</span></button>
+      <button class="menu-btn" data-go="friends"><span class="mi">👥</span><span>Amigos</span><span class="dot hidden" id="friendsDot"></span></button>
       <button class="menu-btn install-btn hidden" id="installBtn"><span class="mi">📲</span><span>Instalar</span></button>
     </nav>
 
@@ -182,10 +198,20 @@
   <section id="friends" class="screen bg-blue hidden">
     <div class="subbar">
       <button class="back-btn" data-go="home">◀</button>
-      <h2>Jugar con amigos</h2>
+      <h2>Amigos</h2>
       <div></div>
     </div>
     <div class="friends-wrap">
+      <div class="card fr-card fr-list">
+        <h3>Mis amigos <span class="small muted" id="frCount"></span></h3>
+        <form class="join-row" id="addFriendForm">
+          <input id="addFriendInput" maxlength="14" placeholder="Nombre de usuario" autocapitalize="off" spellcheck="false" autocomplete="off">
+          <button class="btn btn-green" type="submit">Añadir</button>
+        </form>
+        <div id="frRequests"></div>
+        <div id="frList"></div>
+      </div>
+      <div class="fr-side">
       <div class="card fr-card">
         <h3>Crear sala privada</h3>
         <p class="muted">Invita a tus amigos con un código y rellena los huecos con bots. Las salas privadas dan XP del pase y monedas, pero no trofeos.</p>
@@ -199,6 +225,7 @@
           <button class="btn btn-blue big" id="joinBtn">Unirse</button>
         </div>
       </div>
+      </div>
     </div>
   </section>
 
@@ -207,7 +234,7 @@
     <div class="subbar">
       <button class="back-btn" id="leaveRoomBtn">◀</button>
       <h2>Sala <span id="roomCode" class="code">-----</span></h2>
-      <button class="btn btn-blue" id="copyLinkBtn">Copiar enlace</button>
+      <div class="row-btns"><button class="btn btn-green" id="inviteFriendsBtn">Invitar amigos</button><button class="btn btn-blue" id="copyLinkBtn">Copiar enlace</button></div>
     </div>
     <div class="room-wrap">
       <div class="card settings">
@@ -261,6 +288,7 @@
   <div id="tapStart" class="hidden"><div class="tap-box"><h1 class="logo">Forest War</h1><p>Toca para jugar a pantalla completa</p></div></div>
   <div id="modal" class="overlay hidden"><div class="card modal-card" id="modalBody"></div></div>
   <div id="toast" class="toast hidden"></div>
+  <div id="inviteBanner" class="invite-banner hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="js/art.js"></script>
