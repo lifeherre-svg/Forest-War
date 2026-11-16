@@ -1,6 +1,15 @@
 # 🌲 Forest War
 
-Juego de arena multijugador estilo *brawler* para el navegador (PC y móvil): partidas rápidas en vista cenital 2.5D, personajes cartoon, súpers, arbustos para esconderse, progresión, tienda y **Pase del Bosque**.
+Juego **para móvil** de arena multijugador estilo *brawler*: partidas rápidas en vista cenital 2.5D, personajes cartoon, súpers, arbustos para esconderse, progresión, tienda y **Pase del Bosque**. Se juega en horizontal con controles táctiles y se instala en el móvil como una app.
+
+## Instalarlo en el móvil
+
+El servidor tiene que estar en internet (ver abajo) para que tus amigos entren desde sus móviles. Luego:
+
+- **Android (Chrome):** abre la web y pulsa **📲 Instalar** en el menú (o «Añadir a pantalla de inicio»). Se abre a pantalla completa y en horizontal.
+- **iPhone (Safari):** botón **Compartir** ⬆️ → **«Añadir a pantalla de inicio»**. El botón 📲 del juego muestra estos pasos.
+
+Si lo abres en el navegador sin instalar, en Android el primer toque pone el juego a pantalla completa. En vertical aparece un aviso para girar el móvil.
 
 ## Arrancar
 
@@ -28,15 +37,18 @@ npm start          # http://localhost:3000
 
 ### Controles
 
-| | PC | Móvil |
-|---|---|---|
-| Moverse | WASD / flechas | Joystick izquierdo |
-| Disparar | Apunta con el ratón + clic izquierdo | Arrastra el joystick derecho y suelta (un toque = apuntado automático) |
-| Súper | `E`, espacio o clic derecho | Botón ★ |
+- **Moverse:** joystick izquierdo (aparece donde pongas el dedo).
+- **Atacar:** arrastra el joystick rojo para apuntar y suelta. Un toque rápido apunta solo al enemigo más cercano.
+- **Súper:** cuando el botón ★ brilla, arrástralo para apuntar (verás el alcance en amarillo) y suelta. Un toque lo lanza con apuntado automático.
+- **Pausa / salir:** botón ❚❚ arriba a la izquierda.
+- El móvil vibra al disparar, recibir daño y caer (en Android).
+
+Para probar desde un ordenador también funcionan WASD, el ratón y la tecla `E`.
 
 ## Estructura
 
 - `server.js`: Express + Socket.IO, perfiles, emparejamiento, salas privadas, bucle a 30 ticks/s.
 - `game/game.js`: simulación autoritativa. `game/bot.js`: IA. `game/map.js`: colisiones y caminos.
 - `game/constants.js`: luchadores, aspectos, modos, mapas y niveles. `game/pass.js`: recompensas del pase. `game/profiles.js`: guardado y recompensas.
-- `public/js/art.js`: todo el arte vectorial (personajes y escenario). `game.js`: render de partida y controles. `ui.js`: menús. `audio.js`: sonidos.
+- `public/js/art.js`: todo el arte vectorial (personajes y escenario). `game.js`: render de partida y controles táctiles. `ui.js`: menús e instalación. `audio.js`: sonidos.
+- `public/manifest.webmanifest`, `public/sw.js` y `public/icons/`: lo que permite instalarlo como app.

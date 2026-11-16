@@ -6,6 +6,12 @@
   <meta name="theme-color" content="#1d3fa8">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Forest War">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>Forest War</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
@@ -39,6 +45,7 @@
       <button class="menu-btn" data-go="shop"><span class="mi">🛒</span><span>Tienda</span><span class="dot hidden" id="shopDot"></span></button>
       <button class="menu-btn" data-go="brawlers"><span class="mi">🐾</span><span>Luchadores</span></button>
       <button class="menu-btn" data-go="friends"><span class="mi">👥</span><span>Amigos</span></button>
+      <button class="menu-btn install-btn hidden" id="installBtn"><span class="mi">📲</span><span>Instalar</span></button>
     </nav>
 
     <div class="home-center">
@@ -176,8 +183,7 @@
   <!-- PARTIDA -->
   <section id="game" class="screen hidden">
     <canvas id="cv"></canvas>
-    <button id="quitBtn" class="btn btn-ghost quit">Salir</button>
-    <div id="rotateHint" class="hidden">Gira el móvil para jugar en horizontal 📱↻</div>
+    <button id="quitBtn" class="pause-btn" aria-label="Menú de partida">❚❚</button>
     <div id="results" class="overlay hidden">
       <div class="results-card">
         <h2 id="resultTitle">¡VICTORIA!</h2>
@@ -189,6 +195,12 @@
     </div>
   </section>
 
+  <div id="rotate" aria-live="polite">
+    <div class="rot-phone"></div>
+    <p>Gira el móvil</p>
+    <small>Forest War se juega en horizontal</small>
+  </div>
+  <div id="tapStart" class="hidden"><div class="tap-box"><h1 class="logo">Forest War</h1><p>Toca para jugar a pantalla completa</p></div></div>
   <div id="modal" class="overlay hidden"><div class="card modal-card" id="modalBody"></div></div>
   <div id="toast" class="toast hidden"></div>
 

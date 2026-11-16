@@ -14,6 +14,11 @@
   const ctx = cv.getContext('2d');
   let W = 0, H = 0, DPR = 1, SCALE = 1;
   const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const SAFE = { l: 0, r: 0, t: 0, b: 0 };
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+  document.body.appendChild(probe);
+  const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* sin vibración */ } };
 
   const G = {
     active: false, over: false, meta: new Map(), myId: null, myTeam: null, mode: null, map: null,
@@ -26,11 +31,12 @@
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     W = window.innerWidth; H = window.innerHeight;
+    const cs = getComputedStyle(probe);
+    SAFE.t = parseFloat(cs.paddingTop) || 0; SAFE.r = parseFloat(cs.paddingRight) || 0;
+    SAFE.b = parseFloat(cs.paddingBottom) || 0; SAFE.l = parseFloat(cs.paddingLeft) || 0;
     cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
     SCALE = Math.min(W / 1150, H / 700);
     if (isTouch) SCALE = Math.max(SCALE, Math.min(W, H) / 600);
-    const hint = document.getElementById('rotateHint');
-    if (hint) hint.classList.toggle('hidden', !(isTouch && H > W));
   }
   window.addEventListener('resize', resize);
   resize();
@@ -71,7 +77,8 @@
     const me = d.me;
     if (G.lastMe) {
       if (me.sup >= 1 && G.lastSup < 1) FW.Sfx.superReady();
-      if (me.hp < G.lastMe.hp && me.alive) { G.shake = Math.min(10, G.shake + 5); FW.Sfx.hurt(); }
+      if (me.hp < G.lastMe.hp && me.alive) { G.shake = Math.min(10, G.shake + 5); FW.Sfx.hurt(); buzz(30); }
+      if (!me.alive && G.lastMe.alive) buzz([80, 50, 80]);
     }
     G.lastSup = me.sup;
     const mine = d.p.find((p) => p[0] === G.myId);
@@ -370,11 +377,40 @@
     }
   }
 
+  function superRange(s) { return s.range || s.dist || s.radius || 300; }
+
+  function drawSuperGuide(meP, s) {
+    const j = touch.sup;
+    const ang = Math.atan2(j.y - j.oy, j.x - j.ox);
+    const dist = (Math.min(JOY_R, Math.hypot(j.x - j.ox, j.y - j.oy)) / JOY_R) * superRange(s);
+    ctx.save();
+    ctx.translate(meP.x, meP.y);
+    ctx.fillStyle = 'rgba(255,210,61,0.3)';
+    ctx.strokeStyle = 'rgba(255,230,120,0.95)';
+    ctx.lineWidth = 3;
+    if (s.type === 'ring' || s.type === 'heal' || s.type === 'shield') {
+      const r = s.type === 'ring' ? s.range : s.type === 'heal' ? s.radius : 45;
+      A.ell(ctx, 0, 0, r, r * 0.92); ctx.fill(); ctx.stroke();
+    } else if (s.type === 'cloud') {
+      const d = clamp(dist || s.range, 60, s.range);
+      A.ell(ctx, Math.cos(ang) * d, Math.sin(ang) * d, s.radius, s.radius * 0.92); ctx.fill(); ctx.stroke();
+    } else {
+      ctx.rotate(ang);
+      const w = s.type === 'dash' ? 26 : s.bulletR + 4;
+      A.rrect(ctx, 0, -w, s.type === 'dash' ? s.dist : s.range, w * 2, w); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawAimGuide(meP) {
     const meta = G.meta.get(G.myId);
     const a = DATA.brawlers[meta.brawler].attack;
     let show = !isTouch;
     let ang = input.aim, dist = input.aimDist;
+    if (isTouch && touch.sup.id !== null && touch.sup.dragged) {
+      drawSuperGuide(meP, DATA.brawlers[meta.brawler].super);
+      return;
+    }
     if (isTouch && touch.aim.id !== null && touch.aim.dragged) {
       show = true;
       ang = Math.atan2(touch.aim.y - touch.aim.oy, touch.aim.x - touch.aim.ox);
@@ -450,12 +486,13 @@
 
     if (G.mode === 'ffa') {
       const list = (S.k || []).slice().sort((a, b) => b[1] - a[1]).slice(0, 5);
-      panel(8, 8, 178, 28 + list.length * 21, 12, 'rgba(20,20,30,0.7)');
-      text('Derribos · meta ' + DATA.modes.ffa.target, 18, 22, 14, '#ffd23d', 'left');
+      const lx = SAFE.l + 62;
+      panel(lx, 8, 178, 28 + list.length * 21, 12, 'rgba(20,20,30,0.7)');
+      text('Derribos · meta ' + DATA.modes.ffa.target, lx + 10, 22, 14, '#ffd23d', 'left');
       list.forEach(([id, k], i) => {
         const m = G.meta.get(id);
-        text((m ? m.name : '?').slice(0, 13), 18, 44 + i * 21, 14, id === G.myId ? '#a6ff9a' : '#fff', 'left');
-        text(String(k), 174, 44 + i * 21, 15, '#fff', 'right');
+        text((m ? m.name : '?').slice(0, 13), lx + 10, 44 + i * 21, 14, id === G.myId ? '#a6ff9a' : '#fff', 'left');
+        text(String(k), lx + 166, 44 + i * 21, 15, '#fff', 'right');
       });
     }
 
@@ -465,13 +502,14 @@
       const a = G.meta.get(f.a), v = G.meta.get(f.v);
       const y = (G.mode === 'ffa' ? 22 : 64) + i * 24;
       const aName = a ? a.name : 'Niebla', vName = v ? v.name : '¿?';
+      const rx = W - 12 - SAFE.r;
       ctx.font = FONT(14);
       const vw = ctx.measureText(vName).width;
-      text(vName, W - 12, y, 14, v ? COL[relation(v.team, v.id)] : '#fff', 'right');
-      text(' 💥 ', W - 12 - vw, y, 14, '#fff', 'right');
+      text(vName, rx, y, 14, v ? COL[relation(v.team, v.id)] : '#fff', 'right');
+      text(' 💥 ', rx - vw, y, 14, '#fff', 'right');
       ctx.font = FONT(14);
       const sw = ctx.measureText(' 💥 ').width;
-      text(aName, W - 12 - vw - sw, y, 14, a ? COL[relation(a.team, a.id)] : '#b6ff7a', 'right');
+      text(aName, rx - vw - sw, y, 14, a ? COL[relation(a.team, a.id)] : '#b6ff7a', 'right');
     });
 
     if (st.si > 0) {
@@ -499,6 +537,7 @@
     if (me && me.alive) {
       const b = superBtn();
       const ready = me.sup >= 1;
+      if (isTouch && touch.sup.id !== null) return;
       A.circ(ctx, b.x, b.y, b.r + 5); ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
       ctx.beginPath(); ctx.moveTo(b.x, b.y);
       ctx.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * me.sup); ctx.closePath();
@@ -514,10 +553,18 @@
   const input = { mx: 0, my: 0, aim: 0, aimDist: 300, fire: false, fs: 0, ss: 0 };
   const keys = new Set();
   const mouse = { x: 0, y: 0 };
-  const touch = { move: { id: null, ox: 0, oy: 0, x: 0, y: 0 }, aim: { id: null, ox: 0, oy: 0, x: 0, y: 0, dragged: false } };
+  const touch = {
+    move: { id: null, ox: 0, oy: 0, x: 0, y: 0 },
+    aim: { id: null, ox: 0, oy: 0, x: 0, y: 0, dragged: false },
+    sup: { id: null, ox: 0, oy: 0, x: 0, y: 0, dragged: false },
+  };
 
+  // Posiciones de los controles (respetando el notch en horizontal).
+  const aimHome = () => ({ x: W - SAFE.r - 130, y: H - SAFE.b - 105 });
+  const moveHome = () => ({ x: SAFE.l + 120, y: H - SAFE.b - 110 });
   function superBtn() {
-    return isTouch ? { x: W - 70, y: H - 195, r: 38 } : { x: W - 62, y: H - 62, r: 36 };
+    if (!isTouch) return { x: W - 62, y: H - 62, r: 36 };
+    return { x: W - SAFE.r - 255, y: H - SAFE.b - 70, r: 38 };
   }
 
   const gameKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE']);
@@ -533,6 +580,7 @@
 
   cv.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; });
   cv.addEventListener('mousedown', (e) => {
+    if (isTouch && e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
     FW.Sfx.unlock();
     mouse.x = e.clientX; mouse.y = e.clientY;
     const b = superBtn();
@@ -558,46 +606,63 @@
     return true;
   }
 
+  const startJoy = (j, t, extra = {}) => Object.assign(j, { id: t.identifier, ox: t.clientX, oy: t.clientY, x: t.clientX, y: t.clientY, dragged: false }, extra);
+
   cv.addEventListener('touchstart', (e) => {
     e.preventDefault();
     FW.Sfx.unlock();
     for (const t of e.changedTouches) {
       const b = superBtn();
-      if (Math.hypot(t.clientX - b.x, t.clientY - b.y) < b.r + 14) {
-        if (!(touch.aim.id !== null && touch.aim.dragged)) autoAim();
-        input.ss++; sendInput();
+      if (touch.sup.id === null && Math.hypot(t.clientX - b.x, t.clientY - b.y) < b.r + 16) {
+        if (G.lastMe && G.lastMe.sup >= 1) { startJoy(touch.sup, t, { ox: b.x, oy: b.y }); buzz(10); }
+        else buzz(5);
         continue;
       }
-      if (t.clientX < W / 2 && touch.move.id === null) {
-        Object.assign(touch.move, { id: t.identifier, ox: t.clientX, oy: t.clientY, x: t.clientX, y: t.clientY });
-      } else if (t.clientX >= W / 2 && touch.aim.id === null) {
-        Object.assign(touch.aim, { id: t.identifier, ox: t.clientX, oy: t.clientY, x: t.clientX, y: t.clientY, dragged: false });
+      if (t.clientX < W / 2) {
+        if (touch.move.id === null) startJoy(touch.move, t);
+      } else if (touch.aim.id === null) {
+        startJoy(touch.aim, t);
       }
     }
   }, { passive: false });
   cv.addEventListener('touchmove', (e) => {
     e.preventDefault();
     for (const t of e.changedTouches) {
-      for (const j of [touch.move, touch.aim]) {
+      for (const j of [touch.move, touch.aim, touch.sup]) {
         if (j.id !== t.identifier) continue;
         j.x = t.clientX; j.y = t.clientY;
-        if (j === touch.aim && Math.hypot(j.x - j.ox, j.y - j.oy) > 18) j.dragged = true;
+        if (j !== touch.move && Math.hypot(j.x - j.ox, j.y - j.oy) > 18) j.dragged = true;
       }
     }
   }, { passive: false });
   const touchEnd = (e) => {
     for (const t of e.changedTouches) {
       if (touch.move.id === t.identifier) touch.move.id = null;
+      const meta = G.meta.get(G.myId);
+      const def = meta ? DATA.brawlers[meta.brawler] : null;
       if (touch.aim.id === t.identifier) {
         const j = touch.aim;
-        const meta = G.meta.get(G.myId);
-        const range = meta ? DATA.brawlers[meta.brawler].attack.range : 400;
+        const range = def ? def.attack.range : 400;
         if (j.dragged) {
           input.aim = Math.atan2(j.y - j.oy, j.x - j.ox);
           input.aimDist = (Math.min(JOY_R, Math.hypot(j.x - j.ox, j.y - j.oy)) / JOY_R) * range;
         } else autoAim();
         input.fs++;
         sendInput();
+        buzz(12);
+        j.id = null; j.dragged = false;
+      }
+      if (touch.sup.id === t.identifier) {
+        const j = touch.sup;
+        if (e.type === 'touchend') {
+          if (j.dragged) {
+            input.aim = Math.atan2(j.y - j.oy, j.x - j.ox);
+            input.aimDist = (Math.min(JOY_R, Math.hypot(j.x - j.ox, j.y - j.oy)) / JOY_R) * (def ? superRange(def.super) : 400);
+          } else autoAim();
+          input.ss++;
+          sendInput();
+          buzz(40);
+        }
         j.id = null; j.dragged = false;
       }
     }
@@ -607,20 +672,27 @@
 
   function drawTouch() {
     if (!isTouch) return;
-    const drawJoy = (j, defX, defY, color) => {
+    const drawJoy = (j, home, color, rad = JOY_R) => {
       const active = j.id !== null;
-      const ox = active ? j.ox : defX, oy = active ? j.oy : defY;
-      A.circ(ctx, ox, oy, JOY_R); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.stroke();
+      const ox = active ? j.ox : home.x, oy = active ? j.oy : home.y;
+      ctx.globalAlpha = active ? 1 : 0.75;
+      A.circ(ctx, ox, oy, rad); ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke();
       let kx = ox, ky = oy;
       if (active) {
         const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy);
-        const k = d > JOY_R ? JOY_R / d : 1;
+        const k = d > rad ? rad / d : 1;
         kx = ox + dx * k; ky = oy + dy * k;
       }
-      A.circ(ctx, kx, ky, 27); ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.stroke();
+      A.circ(ctx, kx, ky, 28); ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.stroke();
+      A.circ(ctx, kx - 8, ky - 9, 8); ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
+      ctx.globalAlpha = 1;
     };
-    drawJoy(touch.move, 110, H - 110, 'rgba(61,139,255,0.9)');
-    drawJoy(touch.aim, W - 165, H - 95, 'rgba(255,90,78,0.9)');
+    drawJoy(touch.move, moveHome(), 'rgba(61,139,255,0.95)');
+    drawJoy(touch.aim, aimHome(), 'rgba(255,90,78,0.95)');
+    if (touch.sup.id !== null) {
+      drawJoy(touch.sup, superBtn(), 'rgba(255,210,61,1)');
+      text('SÚPER', touch.sup.ox, touch.sup.oy - JOY_R - 14, 16, '#ffd23d');
+    }
   }
 
   function sendInput() {

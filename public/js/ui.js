@@ -642,7 +642,7 @@
     else show('home');
   };
   $('quitBtn').onclick = () => {
-    modal('<h3 class="stroke">¿Salir de la partida?</h3><p class="muted">Si sales ahora no recibirás recompensas.</p><div class="row-btns" style="width:100%"><button class="btn btn-ghost" data-no>Seguir jugando</button><button class="btn btn-red" data-yes>Salir</button></div>', (e) => {
+    modal('<h3 class="stroke">Pausa</h3><p class="muted">La partida sigue en marcha.</p><h3 class="stroke" style="font-size:22px">¿Salir de la partida?</h3><p class="muted">Si sales ahora no recibirás recompensas.</p><div class="row-btns" style="width:100%"><button class="btn btn-ghost" data-no>Seguir jugando</button><button class="btn btn-red" data-yes>Salir</button></div>', (e) => {
       if (e.target.closest('[data-no]')) closeModal();
       if (e.target.closest('[data-yes]')) {
         closeModal();
@@ -654,6 +654,62 @@
       }
     });
   };
+
+  // ------------------------------------------------------------- app móvil
+  const standalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let deferredPrompt = null;
+  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    $('installBtn').classList.remove('hidden');
+  });
+  if (isIOS && !standalone) $('installBtn').classList.remove('hidden');
+  window.addEventListener('appinstalled', () => { $('installBtn').classList.add('hidden'); toast('¡Forest War instalado en tu móvil!'); });
+  $('installBtn').onclick = async () => {
+    FW.Sfx.click();
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice.catch(() => null);
+      deferredPrompt = null;
+      $('installBtn').classList.add('hidden');
+      return;
+    }
+    modal(`<h3 class="stroke">Instalar en iPhone</h3>
+      <ol class="ios-steps"><li>Pulsa el botón <b>Compartir</b> ⬆️ de Safari.</li><li>Elige <b>«Añadir a pantalla de inicio»</b>.</li><li>Abre Forest War desde su icono: se juega a pantalla completa.</li></ol>
+      <button class="btn btn-yellow big" data-close>Entendido</button>`, (e) => { if (e.target.closest('[data-close]')) closeModal(); });
+  };
+
+  // Pantalla completa y bloqueo en horizontal (Android) con el primer toque.
+  function lockLandscape() {
+    try {
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+    } catch (e) { /* no soportado */ }
+  }
+  function goFullscreen() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return;
+    try {
+      const r = req.call(el, { navigationUI: 'hide' });
+      if (r && r.then) r.then(lockLandscape).catch(() => {});
+    } catch (e) { /* no soportado */ }
+  }
+  if (FW.Game.isTouch && !standalone && (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) && !isIOS) {
+    $('tapStart').classList.remove('hidden');
+    $('tapStart').addEventListener('click', () => {
+      FW.Sfx.unlock();
+      goFullscreen();
+      $('tapStart').classList.add('hidden');
+    });
+  } else if (standalone) {
+    document.addEventListener('touchend', lockLandscape, { once: true });
+  }
+  // Si se sale de pantalla completa durante la partida, ofrecer volver.
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && FW.Game.isTouch && !standalone && !isIOS) $('tapStart').classList.remove('hidden');
+  });
 
   // Refrescar contadores de tiempo (prueba gratis del pase).
   setInterval(() => { if (screen === 'home' || screen === 'pass') render(); }, 30000);
