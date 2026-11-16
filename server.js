@@ -16,6 +16,7 @@ const QUEUE_WAIT_MS = 6000;
 const DIFFICULTIES = ['facil', 'normal', 'dificil'];
 
 const app = express();
+app.get('/healthz', (req, res) => res.json({ ok: true, rooms: rooms.size, players: io.engine ? io.engine.clientsCount : 0 }));
 app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const io = new Server(server);
@@ -557,6 +558,17 @@ setInterval(() => {
     }
   }
 }, 1000 / 30);
+
+// Al apagar (p. ej. Render al desplegar una versión nueva) se guarda todo antes de salir.
+function shutdown(sig) {
+  console.log(`${sig} recibido: guardando perfiles y cerrando…`);
+  Profiles.flush();
+  io.close();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 server.listen(PORT, () => {
   console.log(`🌲 Forest War escuchando en http://localhost:${PORT}`);

@@ -1,0 +1,24 @@
+# Configuración de Render (Blueprint). En Render: New → Blueprint → elige este repositorio.
+services:
+  - type: web
+    name: forest-war
+    runtime: node
+    # "starter" es el plan de pago más barato: es necesario para tener disco
+    # y que las cuentas no se borren. (Ver README para usar el plan gratis.)
+    plan: starter
+    region: frankfurt
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATA_DIR
+        value: /var/data
+      - key: PASS_TRIAL_DAYS
+        value: "7"
+    disk:
+      name: forest-war-data
+      mountPath: /var/data
+      sizeGB: 1

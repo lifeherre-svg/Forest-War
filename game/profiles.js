@@ -27,19 +27,27 @@ for (const p of Object.values(profiles)) {
 }
 
 let saveTimer = null;
+function writeNow() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(FILE + '.tmp', JSON.stringify(profiles));
+    fs.renameSync(FILE + '.tmp', FILE);
+  } catch (e) {
+    console.error('No se pudieron guardar los perfiles:', e.message);
+  }
+}
 function save() {
   if (saveTimer) return;
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    try {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-      fs.writeFileSync(FILE + '.tmp', JSON.stringify(profiles));
-      fs.renameSync(FILE + '.tmp', FILE);
-    } catch (e) {
-      console.error('No se pudieron guardar los perfiles:', e.message);
-    }
-  }, 1000);
+  saveTimer = setTimeout(() => { saveTimer = null; writeNow(); }, 1000);
 }
+// Guardar ya lo pendiente (al apagar el servidor).
+function flush() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  writeNow();
+}
+console.log(`Perfiles: ${Object.keys(profiles).length} cargados desde ${FILE}`);
 
 const cleanName = (n) => String(n || '').replace(/[<>&"']/g, '').trim().slice(0, 14) || 'Jugador';
 
@@ -474,7 +482,7 @@ const byId = (pid) => profiles[pid] || null;
 const idByName = (name) => byName.get(String(name || '').trim().toLowerCase()) || null;
 
 module.exports = {
-  byId, idByName, save, resetPassword, regenerateRecovery,
+  byId, idByName, save, flush, resetPassword, regenerateRecovery,
   newProfile, get, publicProfile, act, applyMatch, totalTrophies, cleanName,
   register, login, logout, resolveToken, changePassword, looks, card, findCardByName,
 };
