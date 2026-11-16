@@ -24,6 +24,63 @@
     <p class="loading-txt">Cargando el bosque…</p>
   </section>
 
+  <!-- REGISTRO / INICIO DE SESIÓN -->
+  <section id="auth" class="screen bg-blue hidden">
+    <div class="auth-wrap">
+      <div class="auth-side">
+        <h1 class="logo">Forest War</h1>
+        <p class="auth-tag">Batallas en el bosque con tus amigos</p>
+        <canvas id="authArt" width="260" height="200"></canvas>
+      </div>
+      <div class="card auth-card">
+        <div class="auth-tabs">
+          <button class="on" data-tab="register">Crear cuenta</button>
+          <button data-tab="login">Iniciar sesión</button>
+        </div>
+        <form id="registerForm" autocomplete="on">
+          <p class="auth-legacy hidden" id="authLegacy">Crea tu cuenta para guardar tu progreso. ¡No perderás nada!</p>
+          <label class="field"><span>Elige tu nombre de usuario</span>
+            <input id="regUser" name="username" maxlength="14" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="Ej: Ardilla_Veloz" required></label>
+          <p class="hint">De 3 a 14 letras, números o _ (sin espacios). Será tu nombre en el juego.</p>
+          <label class="field"><span>Contraseña</span>
+            <input id="regPass" type="password" name="new-password" autocomplete="new-password" placeholder="Mínimo 6 caracteres" required></label>
+          <label class="field"><span>Repite la contraseña</span>
+            <input id="regPass2" type="password" autocomplete="new-password" placeholder="Otra vez" required></label>
+          <p class="msg" id="regMsg"></p>
+          <button class="btn btn-yellow big" type="submit">¡Crear cuenta!</button>
+        </form>
+        <form id="loginForm" class="hidden" autocomplete="on">
+          <label class="field"><span>Nombre de usuario</span>
+            <input id="logUser" name="username" maxlength="14" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+          <label class="field"><span>Contraseña</span>
+            <input id="logPass" type="password" name="password" autocomplete="current-password" required></label>
+          <p class="msg" id="logMsg"></p>
+          <button class="btn btn-blue big" type="submit">Entrar</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- PERFIL -->
+  <section id="profile" class="screen bg-blue hidden">
+    <div class="subbar">
+      <button class="back-btn" data-go="home">◀</button>
+      <h2>Mi perfil</h2>
+      <div></div>
+    </div>
+    <div class="profile-layout">
+      <div class="profile-left">
+        <div id="myCard"></div>
+        <div class="row-btns col">
+          <button class="btn btn-yellow" id="renameBtn">Cambiar nombre</button>
+          <button class="btn btn-blue" id="passwordBtn">Cambiar contraseña</button>
+          <button class="btn btn-red" id="logoutBtn">Cerrar sesión</button>
+        </div>
+      </div>
+      <div class="card profile-right" id="customize"></div>
+    </div>
+  </section>
+
   <!-- INICIO -->
   <section id="home" class="screen bg-blue hidden">
     <div class="topbar">
@@ -31,6 +88,7 @@
         <img class="avatar" id="avatarImg" alt="">
         <div class="pc-text">
           <div class="pc-name" id="pName">Jugador</div>
+          <div class="pc-title" id="pTitle"></div>
           <div class="pc-trophies"><span class="ic-trophy"></span><b id="pTrophies">0</b></div>
         </div>
       </button>

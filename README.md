@@ -22,6 +22,14 @@ npm start          # http://localhost:3000
 - **Por internet:** súbelo a Render, Railway o Fly.io (app Node normal, usa `PORT`), o abre tu PC con `ngrok http 3000`.
 - Los perfiles se guardan en `data/profiles.json` (cambia la carpeta con `DATA_DIR`). En hostings sin disco persistente, monta un volumen ahí.
 
+## Cuentas y perfil
+
+- **Registro obligatorio:** la primera vez se elige un **nombre de usuario** (único, de 3 a 14 letras, números o `_`) y una contraseña (mínimo 6 caracteres). Con esa cuenta se entra desde cualquier móvil y el progreso se guarda en el servidor.
+- Las contraseñas se guardan cifradas con *scrypt*; tras 5 intentos fallidos se bloquea el inicio de sesión de esa cuenta 30 s.
+- Quien ya jugaba antes de existir las cuentas conserva todo su progreso: se le pide crear la cuenta y se le asigna su perfil.
+- **Mi perfil** (toca tu nombre en el menú): cambiar el nombre de usuario y la contraseña, cerrar sesión, y personalizar **avatar** (cualquier luchador o aspecto que tengas), **color del nombre**, **título** y **fondo de la tarjeta**. Algunos colores, títulos y fondos se desbloquean con trofeos, victorias, derribos, partidas o niveles del pase (`game/cosmetics.js`).
+- En una sala privada, toca el nombre de un jugador para ver su tarjeta de perfil.
+
 ## Qué incluye
 
 - **Partida rápida** en 4 modos; si no hay bastante gente, se completa con bots de dificultad acorde a tus trofeos.
@@ -49,6 +57,6 @@ Para probar desde un ordenador también funcionan WASD, el ratón y la tecla `E`
 
 - `server.js`: Express + Socket.IO, perfiles, emparejamiento, salas privadas, bucle a 30 ticks/s.
 - `game/game.js`: simulación autoritativa. `game/bot.js`: IA. `game/map.js`: colisiones y caminos.
-- `game/constants.js`: luchadores, aspectos, modos, mapas y niveles. `game/pass.js`: recompensas del pase. `game/profiles.js`: guardado y recompensas.
+- `game/constants.js`: luchadores, aspectos, modos, mapas y niveles. `game/pass.js`: recompensas del pase. `game/profiles.js`: cuentas, sesiones, guardado y recompensas. `game/cosmetics.js`: opciones de personalización.
 - `public/js/art.js`: todo el arte vectorial (personajes y escenario). `game.js`: render de partida y controles táctiles. `ui.js`: menús e instalación. `audio.js`: sonidos.
 - `public/manifest.webmanifest`, `public/sw.js` y `public/icons/`: lo que permite instalarlo como app.

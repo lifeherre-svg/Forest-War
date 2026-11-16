@@ -25,12 +25,12 @@
   let viewBrawler = null;
   let inPublicGame = false;
   let pendingJoin = new URLSearchParams(location.search).get('sala');
-  let firstProfile = !store.get('fw-token');
+  let welcome = false;
 
   // ----------------------------------------------------------- utilidades
   function show(id) {
     screen = id;
-    for (const s of ['loading', 'home', 'brawlers', 'shop', 'pass', 'friends', 'room', 'queue', 'game']) $(s).classList.toggle('hidden', s !== id);
+    for (const s of ['loading', 'auth', 'profile', 'home', 'brawlers', 'shop', 'pass', 'friends', 'room', 'queue', 'game']) $(s).classList.toggle('hidden', s !== id);
     render();
   }
   let toastTimer = 0;
@@ -106,7 +106,7 @@
   // ------------------------------------------------------------- conexión
   socket.on('connect', () => {
     myId = socket.id;
-    socket.emit('auth', { token: store.get('fw-token'), name: store.get('fw-name') || '' });
+    socket.emit('auth', { token: store.get('fw-token') });
   });
   socket.on('disconnect', () => {
     FW.Game.stop();
@@ -117,14 +117,175 @@
   socket.on('token', (t) => store.set('fw-token', t));
   socket.on('profile', (p) => {
     P = p;
-    if (screen === 'loading') {
+    if (screen === 'loading' || screen === 'auth') {
       show('home');
-      if (firstProfile) { firstProfile = false; askName(true); }
+      if (welcome) {
+        welcome = false;
+        modal(`<h3 class="stroke">¡Bienvenido, ${esc(P.name)}!</h3>
+          <p class="muted">Tu cuenta está lista. Personaliza tu perfil tocando tu nombre arriba a la izquierda.</p>
+          <p class="small muted">🎁 Durante tu primera semana el <b>Pase Premium es gratis</b>.</p>
+          <button class="btn btn-yellow big" data-close>¡A jugar!</button>`, (e) => { if (e.target.closest('[data-close]')) closeModal(); });
+      }
       if (pendingJoin) { socket.emit('joinRoom', { code: pendingJoin }); pendingJoin = null; }
     } else render();
   });
   socket.on('rewards', showRewards);
   socket.on('errorMsg', (m) => toast(m));
+  socket.on('toast', (m) => toast(m));
+
+  // ------------------------------------------------------------- registro
+  let authTab = 'register';
+  function setAuthTab(tab) {
+    authTab = tab;
+    $$('.auth-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    $('registerForm').classList.toggle('hidden', tab !== 'register');
+    $('loginForm').classList.toggle('hidden', tab !== 'login');
+    $('regMsg').textContent = ''; $('logMsg').textContent = '';
+  }
+  $$('.auth-tabs button').forEach((b) => (b.onclick = () => { FW.Sfx.click(); setAuthTab(b.dataset.tab); }));
+  socket.on('needAuth', (info = {}) => {
+    P = null;
+    room = null;
+    FW.Game.stop();
+    closeModal();
+    $('authLegacy').classList.toggle('hidden', !info.legacy);
+    if (info.legacy && info.name && !$('regUser').value) $('regUser').value = info.name.replace(/[^A-Za-z0-9_ÁÉÍÓÚÜÑáéíóúüñ]/g, '').slice(0, 14);
+    show('auth');
+    setAuthTab(store.get('fw-had-account') ? 'login' : 'register');
+    drawAuthArt();
+  });
+  socket.on('authError', (m) => { welcome = false; $(authTab === 'register' ? 'regMsg' : 'logMsg').textContent = m; });
+  const USER_RE = /^[A-Za-z0-9_ÁÉÍÓÚÜÑáéíóúüñ]{3,14}$/;
+  $('registerForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const u = $('regUser').value.trim(), p1 = $('regPass').value, p2 = $('regPass2').value;
+    if (!USER_RE.test(u)) return ($('regMsg').textContent = 'El nombre debe tener de 3 a 14 letras, números o _ (sin espacios).');
+    if (p1.length < 6) return ($('regMsg').textContent = 'La contraseña debe tener al menos 6 caracteres.');
+    if (p1 !== p2) return ($('regMsg').textContent = 'Las contraseñas no coinciden.');
+    $('regMsg').textContent = '';
+    welcome = true;
+    FW.Sfx.click();
+    socket.emit('register', { username: u, password: p1 });
+  });
+  $('loginForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    $('logMsg').textContent = '';
+    welcome = false;
+    FW.Sfx.click();
+    socket.emit('login', { username: $('logUser').value.trim(), password: $('logPass').value });
+  });
+  socket.on('token', () => store.set('fw-had-account', '1'));
+  function drawAuthArt() {
+    if (!DATA) return;
+    const c = $('authArt'), x = c.getContext('2d');
+    x.clearRect(0, 0, c.width, c.height);
+    const list = [['ulma', 60, 0.55], ['brutus', 200, 2.6], ['pinon', 130, 0.2]];
+    for (const [b, px, aim] of list) A.drawBrawler(x, b, DATA.brawlers[b].skins.default.pal, { x: px, y: 185, scale: b === 'pinon' ? 1.6 : 1.3, aim, t: 300 });
+  }
+
+  // ------------------------------------------------------------- perfil
+  const nameColor = (look) => (DATA.cosmetics.nameColors[look && look.nameColor] || DATA.cosmetics.nameColors.blanco).color;
+  const titleName = (look) => (DATA.cosmetics.titles[look && look.title] || DATA.cosmetics.titles.novato).name;
+  const reqText = (r) => ({ trophies: `${r.n} trofeos`, wins: `${r.n} victorias`, games: `${r.n} partidas`, kills: `${r.n} derribos`, brawlers: `${r.n} luchadores`, passTier: `nivel ${r.n} del pase` }[r.t] || '');
+
+  function cardHtml(c) {
+    const bg = (DATA.cosmetics.banners[c.banner] || DATA.cosmetics.banners.azul).bg;
+    const s = c.stats || {};
+    return `<div class="pcard" style="background:${bg}">
+      <img src="${portrait(c.avatar.b, c.avatar.s, 128)}" alt="">
+      <div class="pn" style="color:${nameColor(c)}">${esc(c.name)}</div>
+      <div class="pt">${esc(titleName(c))}</div>
+      <div class="ps">
+        <div><b>🏆 ${c.totalTrophies}</b>Trofeos</div>
+        <div><b>${s.wins || 0}</b>Victorias</div>
+        <div><b>${s.games || 0}</b>Partidas</div>
+        <div><b>${s.kills || 0}</b>Derribos</div>
+      </div></div>`;
+  }
+
+  function renderProfile() {
+    $('myCard').innerHTML = cardHtml({ ...P, stats: P.stats });
+    const C = DATA.cosmetics;
+    let html = '<div class="cz-sec"><h4>Avatar</h4><div class="cz-grid">';
+    for (const [b, o] of Object.entries(P.owned)) {
+      for (const sk of o.skins) {
+        const on = P.avatar.b === b && P.avatar.s === sk;
+        html += `<button class="cz-av${on ? ' on' : ''}" data-av="${b}|${sk}" title="${esc(DATA.brawlers[b].skins[sk].name)}"><img src="${portrait(b, sk, 96)}" alt=""></button>`;
+      }
+    }
+    html += '</div></div><div class="cz-sec"><h4>Color del nombre</h4><div class="cz-grid">';
+    for (const [k, v] of Object.entries(C.nameColors)) {
+      const ok = P.unlocks.nameColors.includes(k);
+      html += `<button class="cz-opt color${P.nameColor === k ? ' on' : ''}${ok ? '' : ' lock'}" data-color="${k}" style="color:${v.color}">${ok ? '' : '🔒 '}${esc(v.name)}${ok ? '' : `<span class="req">${reqText(v.req)}</span>`}</button>`;
+    }
+    html += '</div></div><div class="cz-sec"><h4>Título</h4><div class="cz-grid">';
+    for (const [k, v] of Object.entries(C.titles)) {
+      const ok = P.unlocks.titles.includes(k);
+      html += `<button class="cz-opt${P.title === k ? ' on' : ''}${ok ? '' : ' lock'}" data-title="${k}">${ok ? '' : '🔒 '}${esc(v.name)}${ok ? '' : `<span class="req">${reqText(v.req)}</span>`}</button>`;
+    }
+    html += '</div></div><div class="cz-sec"><h4>Fondo de la tarjeta</h4><div class="cz-grid">';
+    for (const [k, v] of Object.entries(C.banners)) {
+      const ok = P.unlocks.banners.includes(k);
+      html += `<button class="cz-opt banner${P.banner === k ? ' on' : ''}${ok ? '' : ' lock'}" data-banner="${k}" style="background:${v.bg}">${ok ? '' : '🔒 '}${esc(v.name)}${ok ? '' : `<span class="req">${reqText(v.req)}</span>`}</button>`;
+    }
+    html += '</div></div>';
+    $('customize').innerHTML = html;
+  }
+  $('customize').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.classList.contains('lock')) { const r = b.querySelector('.req'); return toast('Se desbloquea con ' + (r ? r.textContent : 'más progreso') + '.'); }
+    if (b.dataset.av) { const [bb, sk] = b.dataset.av.split('|'); act('customize', { avatar: { b: bb, s: sk } }); }
+    if (b.dataset.color) act('customize', { nameColor: b.dataset.color });
+    if (b.dataset.title) act('customize', { title: b.dataset.title });
+    if (b.dataset.banner) act('customize', { banner: b.dataset.banner });
+  });
+  $('renameBtn').onclick = () => {
+    FW.Sfx.click();
+    modal(`<h3 class="stroke">Cambiar nombre de usuario</h3>
+      <input id="newName" maxlength="14" autocapitalize="off" spellcheck="false" value="${esc(P.name)}">
+      <p class="hint" style="margin:0">De 3 a 14 letras, números o _ (sin espacios).</p>
+      <div class="row-btns" style="width:100%"><button class="btn btn-ghost" data-no>Cancelar</button><button class="btn btn-yellow" data-save>Guardar</button></div>`, (e) => {
+      if (e.target.closest('[data-no]')) closeModal();
+      if (e.target.closest('[data-save]')) {
+        const n = $('newName').value.trim();
+        if (!USER_RE.test(n)) return toast('El nombre debe tener de 3 a 14 letras, números o _ (sin espacios).');
+        if (n !== P.name) act('setUsername', { name: n });
+        closeModal();
+      }
+    });
+  };
+  $('passwordBtn').onclick = () => {
+    FW.Sfx.click();
+    modal(`<h3 class="stroke">Cambiar contraseña</h3>
+      <label class="field" style="width:100%"><span>Contraseña actual</span><input id="pwOld" type="password" autocomplete="current-password"></label>
+      <label class="field" style="width:100%"><span>Nueva contraseña</span><input id="pwNew" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"></label>
+      <div class="row-btns" style="width:100%"><button class="btn btn-ghost" data-no>Cancelar</button><button class="btn btn-yellow" data-save>Guardar</button></div>`, (e) => {
+      if (e.target.closest('[data-no]')) closeModal();
+      if (e.target.closest('[data-save]')) {
+        if ($('pwNew').value.length < 6) return toast('La contraseña debe tener al menos 6 caracteres.');
+        socket.emit('changePassword', { current: $('pwOld').value, password: $('pwNew').value });
+        closeModal();
+      }
+    });
+  };
+  $('logoutBtn').onclick = () => {
+    modal(`<h3 class="stroke">¿Cerrar sesión?</h3><p class="muted">Podrás volver a entrar con tu nombre de usuario y contraseña.</p>
+      <div class="row-btns" style="width:100%"><button class="btn btn-ghost" data-no>Cancelar</button><button class="btn btn-red" data-yes>Cerrar sesión</button></div>`, (e) => {
+      if (e.target.closest('[data-no]')) closeModal();
+      if (e.target.closest('[data-yes]')) {
+        socket.emit('logout', { token: store.get('fw-token') });
+        store.set('fw-token', '');
+        $('logPass').value = ''; $('regPass').value = ''; $('regPass2').value = '';
+        closeModal();
+      }
+    });
+  };
+  socket.on('profileCard', (c) => {
+    modal(`${cardHtml(c)}<button class="btn btn-yellow big" data-close>Cerrar</button>`, (e) => { if (e.target.closest('[data-close]')) closeModal(); });
+    $('modalBody').querySelector('.pcard').style.width = '100%';
+  });
+  const viewProfile = (name) => { FW.Sfx.click(); socket.emit('viewProfile', { name }); };
 
   // ------------------------------------------------------------- render
   function render() {
@@ -137,6 +298,7 @@
     if (screen === 'shop') renderShop();
     if (screen === 'pass') renderPass();
     if (screen === 'room') renderRoom();
+    if (screen === 'profile') renderProfile();
   }
 
   function claimableCount() {
@@ -153,8 +315,10 @@
     const sel = P.selected;
     const o = P.owned[sel];
     $('pName').textContent = P.name;
+    $('pName').style.color = nameColor(P);
+    $('pTitle').textContent = titleName(P);
     $('pTrophies').textContent = P.totalTrophies;
-    $('avatarImg').src = portrait(sel, o.skin, 96);
+    $('avatarImg').src = portrait(P.avatar.b, P.avatar.s, 96);
     $('selName').textContent = DATA.brawlers[sel].name;
     $('selTrophies').textContent = P.trophies[sel] || 0;
     $('selLevel').textContent = 'Nivel ' + o.level;
@@ -219,22 +383,7 @@
     if (mute) { FW.Sfx.toggle(); render(); }
   });
 
-  function askName(first) {
-    modal(`<h3 class="stroke">${first ? '¡Bienvenido al bosque!' : 'Cambiar nombre'}</h3>
-      <p class="muted">${first ? '¿Cómo quieres llamarte?' : 'Elige un nombre nuevo'}</p>
-      <input id="nameInput" maxlength="14" placeholder="Tu nombre" value="${esc(first ? '' : P.name)}">
-      ${first ? `<p class="small muted">🎁 Durante tu primera semana el <b>Pase Premium es gratis</b>.</p>` : ''}
-      <button class="btn btn-yellow big" data-save>Aceptar</button>`, (e) => {
-      if (!e.target.closest('[data-save]')) return;
-      const n = $('nameInput').value.trim() || 'Jugador';
-      store.set('fw-name', n);
-      act('setName', { name: n });
-      closeModal();
-    });
-    setTimeout(() => $('nameInput') && $('nameInput').focus(), 50);
-    $('nameInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('modalBody').querySelector('[data-save]').click(); });
-  }
-  $('profileBtn').onclick = () => askName(false);
+  $('profileBtn').onclick = () => { FW.Sfx.click(); show('profile'); };
 
   $('modeBtn').onclick = () => {
     FW.Sfx.click();
@@ -547,7 +696,9 @@
         const tags = [];
         if (x.id === room.hostId) tags.push('<span class="tag">Anfitrión</span>');
         if (x.id === myId) tags.push('<span class="tag">Tú</span>');
-        html += `<div class="member${x.id === myId ? ' me' : ''}"><img src="${portrait(x.brawler, x.skin, 64)}" alt=""><div class="nm">${esc(x.name)}<div class="sub">${b.name} · Nv ${x.level}${x.isBot ? ' · Bot ' + DIFF_NAMES[x.difficulty] : ''}</div></div>${tags.join(' ')}`;
+        const nm = x.isBot ? esc(x.name) : `<span class="name-tag" style="color:${nameColor(x.look) === '#ffffff' ? 'inherit' : nameColor(x.look)};-webkit-text-stroke:${nameColor(x.look) === '#ffffff' ? 0 : '0.6px #000'}">${esc(x.name)}</span>`;
+        const ttl = x.isBot ? '' : `<div class="mtitle">${esc(titleName(x.look))}</div>`;
+        html += `<div class="member${x.id === myId ? ' me' : ''}"><img src="${portrait(x.brawler, x.skin, 64)}" alt=""><div class="nm"${x.isBot ? '' : ` data-view="${esc(x.name)}"`}>${nm}${ttl}<div class="sub">${b.name} · Nv ${x.level}${x.isBot ? ' · Bot ' + DIFF_NAMES[x.difficulty] : ''}</div></div>${tags.join(' ')}`;
         if (x.isBot && isHost && !room.inGame) {
           html += `<div class="ctrl"><select data-act="botbrawler" data-id="${x.id}" aria-label="Luchador del bot">${bOpts(x.brawler)}</select>`;
           html += `<select data-act="botdiff" data-id="${x.id}" aria-label="Dificultad del bot">${dOpts(x.difficulty)}</select>`;
@@ -566,6 +717,8 @@
     $('waitHost').textContent = room.inGame ? 'Hay una partida en curso. Entrarás en la siguiente.' : 'Esperando a que el anfitrión empiece…';
   }
   $('teams').addEventListener('click', (e) => {
+    const v = e.target.closest('[data-view]');
+    if (v) return viewProfile(v.dataset.view);
     const el = e.target.closest('[data-act]');
     if (!el || el.tagName === 'SELECT') return;
     FW.Sfx.click();
@@ -626,7 +779,7 @@
     const myTeam = me ? me.team : null;
     $('resultPlayers').innerHTML = res.players.map((p) => {
       const rel = p.id === myId ? 'me' : team ? (p.team === myTeam ? '' : 'enemy') : 'enemy';
-      return `<div class="rp ${rel}">${p.place ? `<span class="rank">${p.place}</span>` : ''}<img src="${portrait(p.brawler, p.skin, 96)}" alt=""><div class="rn">${esc(p.name)}</div><div class="rs">💥${p.kills} · ${p.damage}</div></div>`;
+      return `<div class="rp ${rel}">${p.place ? `<span class="rank">${p.place}</span>` : ''}<img src="${portrait(p.brawler, p.skin, 96)}" alt=""><div class="rn" style="color:${p.look ? nameColor(p.look) : '#fff'}">${esc(p.name)}</div><div class="rs">💥${p.kills} · ${p.damage}</div></div>`;
     }).join('');
     setTimeout(() => {
       $('results').classList.remove('hidden');

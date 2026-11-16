@@ -47,6 +47,7 @@ class Game {
       const p = {
         id: m.id, name: m.name, brawler: m.brawler, def, isBot: !!m.isBot, pid: m.pid || null,
         skin: def.skins[m.skin] ? m.skin : 'default', level, mult, burst: null, shieldUntil: 0,
+        look: m.look || null,
         team: this.modeDef.team ? m.team : 100 + ffaIdx++,
         x: 0, y: 0, vx: 0, vy: 0, r: def.radius, hp: Math.round(def.hp * mult), maxHp: Math.round(def.hp * mult),
         ammo: 3, nextShot: 0, superCharge: 0, alive: true, respawnAt: 0,
@@ -507,7 +508,7 @@ class Game {
       total: this.players.size,
       players: [...this.players.values()]
         .map((p) => ({
-          id: p.id, pid: p.pid, name: p.name, brawler: p.brawler, skin: p.skin, team: p.team, isBot: p.isBot,
+          id: p.id, pid: p.pid, name: p.name, brawler: p.brawler, skin: p.skin, team: p.team, isBot: p.isBot, look: p.look,
           kills: p.kills, deaths: p.deaths, damage: p.damage, place: place ? place.get(p.id) : null,
         }))
         .sort((a, b) => (place ? a.place - b.place : 0) || b.kills - a.kills || b.damage - a.damage),

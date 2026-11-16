@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const { Game } = require('./game/game');
 const { BRAWLERS, MODES, MAPS, BOT_NAMES, LEVELS, BOT_LEVEL } = require('./game/constants');
 const { PASS } = require('./game/pass');
+const COSMETICS = require('./game/cosmetics');
 const Profiles = require('./game/profiles');
 
 const PORT = process.env.PORT || 3000;
@@ -44,7 +45,7 @@ const roomCapacity = (room) => {
 function publicRoom(room) {
   return {
     code: room.code, hostId: room.hostId, mode: room.mode, map: room.map, inGame: !!room.game, public: !!room.public,
-    members: room.members.map(({ id, name, brawler, skin, level, team, isBot, difficulty, trophies }) => ({ id, name, brawler, skin, level, team, isBot, difficulty, trophies })),
+    members: room.members.map(({ id, name, brawler, skin, level, team, isBot, difficulty, trophies, look }) => ({ id, name, brawler, skin, level, team, isBot, difficulty, trophies, look })),
   };
 }
 const broadcastRoom = (room) => {
@@ -77,7 +78,7 @@ function memberFromProfile(prof, socketId, team) {
   const o = prof.owned[sel];
   return {
     id: socketId, pid: prof.id, name: prof.name, brawler: sel, skin: o.skin, level: o.level, team, isBot: false,
-    trophies: prof.trophies[sel] || 0,
+    trophies: prof.trophies[sel] || 0, look: Profiles.looks(prof),
   };
 }
 
@@ -141,6 +142,7 @@ io.on('connection', (socket) => {
     brawlers: BRAWLERS, modes: MODES,
     maps: Object.fromEntries(Object.entries(MAPS).map(([k, v]) => [k, { name: v.name }])),
     pass: PASS, levels: { max: LEVELS.max, cost: LEVELS.cost },
+    cosmetics: { nameColors: COSMETICS.NAME_COLORS, titles: COSMETICS.TITLES, banners: COSMETICS.BANNERS },
   });
 
   const getRoom = () => rooms.get(socket.data.room);
@@ -152,12 +154,65 @@ io.on('connection', (socket) => {
   const err = (msg) => socket.emit('errorMsg', msg);
   const sendProfile = () => { const p = prof(); if (p) socket.emit('profile', Profiles.publicProfile(p)); };
 
-  socket.on('auth', ({ token, name } = {}) => {
-    let p = Profiles.get(token);
-    if (!p) p = Profiles.newProfile(name);
+  // ------------------------------------------------------------ cuentas
+  function signedIn(p, token) {
     socket.data.pid = p.id;
-    socket.emit('token', p.id);
+    socket.data.guest = null;
+    if (token) socket.emit('token', token);
     sendProfile();
+  }
+
+  socket.on('auth', ({ token } = {}) => {
+    const r = Profiles.resolveToken(token);
+    if (r.profile) return signedIn(r.profile);
+    socket.data.pid = null;
+    socket.data.guest = r.guest ? r.guest.id : null;
+    socket.emit('needAuth', r.guest ? { legacy: true, name: r.guest.name } : {});
+  });
+
+  const tooFast = () => {
+    const now = Date.now();
+    if (socket.data.lastAuth && now - socket.data.lastAuth < 500) return true;
+    socket.data.lastAuth = now;
+    return false;
+  };
+
+  socket.on('register', async ({ username, password } = {}) => {
+    if (tooFast()) return socket.emit('authError', 'Espera un momento…');
+    if (socket.data.pid) return;
+    const guest = socket.data.guest ? Profiles.get(socket.data.guest) : null;
+    const r = await Profiles.register({ username, password, guest });
+    if (r.error) return socket.emit('authError', r.error);
+    signedIn(r.profile, r.token);
+  });
+
+  socket.on('login', async ({ username, password } = {}) => {
+    if (tooFast()) return socket.emit('authError', 'Espera un momento…');
+    const r = await Profiles.login({ username, password });
+    if (r.error) return socket.emit('authError', r.error);
+    signedIn(r.profile, r.token);
+  });
+
+  socket.on('logout', ({ token } = {}) => {
+    leave();
+    Profiles.logout(token);
+    socket.data.pid = null;
+    socket.emit('needAuth', {});
+  });
+
+  socket.on('changePassword', async (args = {}) => {
+    const p = prof();
+    if (!p) return;
+    const r = await Profiles.changePassword(p, args);
+    if (r.error) return err(r.error);
+    socket.emit('toast', 'Contraseña cambiada.');
+  });
+
+  socket.on('viewProfile', ({ name } = {}) => {
+    if (!prof()) return;
+    const c = Profiles.findCardByName(name);
+    if (!c) return err('Ese jugador no tiene perfil público.');
+    socket.emit('profileCard', c);
   });
 
   socket.on('profileAction', ({ action, args } = {}) => {
@@ -169,7 +224,7 @@ io.on('connection', (socket) => {
     if (res.rewards) socket.emit('rewards', res.rewards);
     // Si cambia el luchador o el nombre estando en una sala privada, actualizarla.
     const room = getRoom();
-    if (room && !room.game && !room.public && (action === 'select' || action === 'setName')) {
+    if (room && !room.game && !room.public && ['select', 'setUsername', 'customize'].includes(action)) {
       const m = room.members.find((x) => x.id === socket.id);
       if (m) { refreshMember(m); broadcastRoom(room); }
     }
