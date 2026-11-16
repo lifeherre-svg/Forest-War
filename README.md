@@ -13,19 +13,32 @@ Si lo abres en el navegador sin instalar, en Android el primer toque pone el jue
 
 ## Publicarlo en Render (para jugar con amigos)
 
-El repositorio ya incluye `render.yaml` con toda la configuración.
+El repositorio ya incluye `render.yaml`, configurado para el **plan gratis**.
 
 1. Entra en [render.com](https://render.com) y regístrate con tu cuenta de **GitHub**.
 2. Pulsa **New → Blueprint** y conecta el repositorio `Forest-War`. Si no aparece, pulsa *Configure account* y dale acceso a Render.
-3. Render leerá `render.yaml` y te enseñará el servicio **forest-war** con un disco de 1 GB. Pulsa **Apply**.
+3. Render leerá `render.yaml` y te enseñará el servicio **forest-war** (plan *Free*). Pulsa **Apply**.
 4. Espera a que el despliegue termine (unos minutos) y abre la dirección `https://forest-war-XXXX.onrender.com` que aparece arriba.
 5. Pásales ese enlace a tus amigos. Pueden instalarlo como app (📲 en Android, *Compartir → Añadir a pantalla de inicio* en iPhone).
 
-Cada vez que se suban cambios a la rama principal, Render vuelve a desplegar solo. Las cuentas están en el disco (`/var/data`), así que no se pierden.
+Cada vez que se suban cambios a la rama principal, Render vuelve a desplegar solo.
 
-**Coste:** el disco solo funciona con un plan de pago (`starter`, el más barato; consulta el precio en Render). Si quieres probar gratis, en `render.yaml` cambia `plan: starter` por `plan: free` y borra el bloque `disk:`. Pero con el plan gratis **las cuentas se borran cada vez que el servidor se reinicia o se actualiza**, y el servidor se duerme tras unos minutos sin jugadores (la primera carga tarda ~1 minuto).
+**Límites del plan gratis:**
+- **Las cuentas y el progreso se borran** cada vez que el servidor se reinicia o se actualiza (no hay disco). Hay que volver a registrarse.
+- El servidor **se duerme** tras unos 15 minutos sin jugadores; la primera persona que entre esperará alrededor de un minuto.
 
-**Comprobar que funciona:** `https://tu-direccion.onrender.com/healthz` responde `{"ok":true,...}`. En el panel de Render, la pestaña *Logs* muestra `Perfiles: N cargados desde /var/data/profiles.json`.
+**Para guardar las cuentas para siempre** (plan de pago): en `render.yaml` cambia `plan: free` por `plan: starter` y añade dentro del servicio:
+
+```yaml
+    disk:
+      name: forest-war-data
+      mountPath: /var/data
+      sizeGB: 1
+```
+
+y en `envVars` una variable `DATA_DIR` con valor `/var/data`.
+
+**Comprobar que funciona:** `https://tu-direccion.onrender.com/healthz` responde `{"ok":true,...}`.
 
 ## Probarlo en tu ordenador
 

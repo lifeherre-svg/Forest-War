@@ -3,9 +3,11 @@ services:
   - type: web
     name: forest-war
     runtime: node
-    # "starter" es el plan de pago más barato: es necesario para tener disco
-    # y que las cuentas no se borren. (Ver README para usar el plan gratis.)
-    plan: starter
+    # Plan gratis: no tiene disco, así que las cuentas se guardan en una carpeta
+    # temporal y SE BORRAN cuando el servidor se reinicia o se actualiza.
+    # Para guardarlas para siempre: cambia a "plan: starter" y añade un disco
+    # (ver README).
+    plan: free
     region: frankfurt
     buildCommand: npm ci --omit=dev
     startCommand: npm start
@@ -14,11 +16,5 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: DATA_DIR
-        value: /var/data
       - key: PASS_TRIAL_DAYS
         value: "7"
-    disk:
-      name: forest-war-data
-      mountPath: /var/data
-      sizeGB: 1
